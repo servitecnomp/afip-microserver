@@ -5,3 +5,4 @@ reportlab
 python-dotenv
 gunicorn
 Flask
+suds-py3
