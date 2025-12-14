@@ -1,15 +1,15 @@
 from flask import Flask, request, jsonify
 from suds.client import Client
-from suds.transport.https import HttpAuthenticated
 import datetime
-import base64
 import os
 
 app = Flask(__name__)
 
 # ----------------------------------------------------------------------
-# CONFIGURABLE → NOMBRES DE ARCHIVOS SUBIDOS A GITHUB
+# CONFIGURACIÓN CUITS Y CERTIFICADOS
+# (los archivos deben estar en la raíz del repo)
 # ----------------------------------------------------------------------
+
 CUIT_1 = "27239676931"
 CUIT_2 = "27461124149"
 
@@ -19,129 +19,138 @@ KEY_1  = "cuit_27239676931.key"
 CERT_2 = "facturacion27461124149.crt"
 KEY_2  = "cuit_27461124149.key"
 
-# AFIP endpoints
+# AFIP – HOMOLOGACIÓN
 WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms"
-WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"    # Cambiar a PRODUCCIÓN al finalizar pruebas
+WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
+# 🔴 PRODUCCIÓN (cuando todo funcione)
+# WSFE = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
 # ----------------------------------------------------------------------
-# FUNCIONES AUXILIARES
+# UTILIDADES
 # ----------------------------------------------------------------------
 
-def load_cert(cuit):
-    if cuit == CUIT_1:
+def load_cert(cuit_emisor):
+    if cuit_emisor == CUIT_1:
         return CERT_1, KEY_1
-    else:
+    elif cuit_emisor == CUIT_2:
         return CERT_2, KEY_2
+    else:
+        raise Exception("CUIT emisor sin certificado configurado")
 
 
-def create_token_sign(cert_file, key_file):
-    """
-    Firma digital para obtener TA (Ticket de Acceso).
-    """
-    cms = os.popen(f'openssl cms -sign -in tra.xml -signer {cert_file} -inkey {key_file} -nodetach -outform der').read()
-    return cms
+def create_cms(cert_file, key_file):
+    cmd = (
+        f"openssl cms -sign -in tra.xml "
+        f"-signer {cert_file} -inkey {key_file} "
+        f"-nodetach -outform der"
+    )
+    return os.popen(cmd).read()
 
 
-def get_token_and_sign(cert_file, key_file):
-    """
-    Solicita TA al WSAA.
-    """
+def get_token_sign(cert_file, key_file):
     tra = f"""<loginTicketRequest version="1.0">
-    <header>
-        <uniqueId>{int(datetime.datetime.now().timestamp())}</uniqueId>
-        <generationTime>{(datetime.datetime.now() - datetime.timedelta(minutes=10)).isoformat()}</generationTime>
-        <expirationTime>{(datetime.datetime.now() + datetime.timedelta(minutes=10)).isoformat()}</expirationTime>
-    </header>
-    <service>wsfe</service>
+  <header>
+    <uniqueId>{int(datetime.datetime.now().timestamp())}</uniqueId>
+    <generationTime>{(datetime.datetime.now() - datetime.timedelta(minutes=10)).isoformat()}</generationTime>
+    <expirationTime>{(datetime.datetime.now() + datetime.timedelta(minutes=10)).isoformat()}</expirationTime>
+  </header>
+  <service>wsfe</service>
 </loginTicketRequest>"""
 
     with open("tra.xml", "w") as f:
         f.write(tra)
 
-    cms = create_token_sign(cert_file, key_file)
+    cms = create_cms(cert_file, key_file)
 
     client = Client(WSAA)
-    resp = client.service.loginCms(cms)
-    return resp
+    ta = client.service.loginCms(cms)
+    return ta.credentials.token, ta.credentials.sign
 
 
-def get_wsfe_client(token, sign, cuit):
+def get_wsfe_client(token, sign, cuit_emisor):
     client = Client(WSFE)
-    client.set_options(soapheaders={
-        "Token": token,
-        "Sign": sign,
-        "Cuit": cuit
-    })
+    client.set_options(
+        soapheaders={
+            "Token": token,
+            "Sign": sign,
+            "Cuit": cuit_emisor,
+        }
+    )
     return client
 
 
-def create_invoice(data):
-    """
-    Crea factura electrónica según datos recibidos del Google Sheets.
-    """
-    cuit = data["cuit"]
+# ----------------------------------------------------------------------
+# FACTURACIÓN
+# ----------------------------------------------------------------------
 
-    cert_file, key_file = load_cert(cuit)
+def crear_factura(data):
+    cuit_emisor   = str(data["cuit_emisor"])
+    cuit_receptor = str(data["cuit_receptor"])
+    punto_venta   = int(data["punto_venta"])
+    tipo_cbte     = int(data["tipo_cbte"])
+    importe       = float(data["importe"])
 
-    # 1) Obtener token & sign
-    ta = get_token_and_sign(cert_file, key_file)
+    cert_file, key_file = load_cert(cuit_emisor)
 
-    token = ta.credentials.token
-    sign  = ta.credentials.sign
+    # 1) Token AFIP
+    token, sign = get_token_sign(cert_file, key_file)
 
-    # 2) Conectar con WSFE
-    client = get_wsfe_client(token, sign, cuit)
+    # 2) WSFE
+    client = get_wsfe_client(token, sign, cuit_emisor)
 
-    # 3) Obtener último número de factura
-    last = client.service.FECompUltimoAutorizado(data["punto_venta"], data["tipo_cbte"])
-    next_number = last.CbteNro + 1
+    # 3) Último comprobante
+    ultimo = client.service.FECompUltimoAutorizado(
+        punto_venta, tipo_cbte
+    )
+    cbte_nro = ultimo.CbteNro + 1
 
-    # 4) Armar comprobante
-    invoice = {
-        "FeCabece ra": {
+    # 4) Comprobante
+    factura = {
+        "FeCabecera": {
             "CantReg": 1,
-            "PtoVta": data["punto_venta"],
-            "CbteTipo": data["tipo_cbte"],
+            "PtoVta": punto_venta,
+            "CbteTipo": tipo_cbte,
         },
         "FeDetReq": [{
             "Concepto": 1,
-            "DocTipo": 99,
-            "DocNro": 0,
-            "CbteDesde": next_number,
-            "CbteHasta": next_number,
+            "DocTipo": 80,  # CUIT
+            "DocNro": int(cuit_receptor),
+            "CbteDesde": cbte_nro,
+            "CbteHasta": cbte_nro,
             "CbteFch": int(datetime.datetime.now().strftime("%Y%m%d")),
-            "ImpTotal": float(data["importe"]),
-            "ImpNeto": float(data["importe"]),
+            "ImpTotal": importe,
+            "ImpNeto": importe,
             "ImpIVA": 0,
             "MonId": "PES",
             "MonCotiz": 1,
-            "Iva": []
         }]
     }
 
-    # 5) Llamar a AFIP
-    result = client.service.FECAESolicitar(invoice)
+    # 5) Solicitar CAE
+    res = client.service.FECAESolicitar(factura)
 
-    cae = result.FeDetResp[0].CAE
-    cae_vto = result.FeDetResp[0].CAEFchVto
+    det = res.FeDetResp[0]
+
+    if not det.CAE:
+        raise Exception(det.Observaciones[0].Msg)
 
     return {
-        "cbte_nro": next_number,
-        "cae": cae,
-        "vencimiento": cae_vto
+        "cbte_nro": cbte_nro,
+        "cae": det.CAE,
+        "vencimiento": det.CAEFchVto,
     }
 
 
 # ----------------------------------------------------------------------
-# ENDPOINT PRINCIPAL
+# ENDPOINTS
 # ----------------------------------------------------------------------
 
 @app.route("/facturar", methods=["POST"])
 def facturar():
-    data = request.json
     try:
-        result = create_invoice(data)
-        return jsonify({"status": "OK", "factura": result})
+        data = request.json
+        factura = crear_factura(data)
+        return jsonify({"status": "OK", "factura": factura})
     except Exception as e:
         return jsonify({"status": "ERROR", "detalle": str(e)})
 
@@ -152,7 +161,8 @@ def home():
 
 
 # ----------------------------------------------------------------------
-# RUN LOCAL (solo debug)
+# LOCAL DEBUG
 # ----------------------------------------------------------------------
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
