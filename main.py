@@ -25,7 +25,7 @@ KEY_2  = "cuit_27461124149.key"
 # AFIP ENDPOINTS
 # ----------------------------------------------------------------------
 
-WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms"
+WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
 
 # HOMOLOGACIÓN
 WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
