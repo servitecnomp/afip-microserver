@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
 from suds.client import Client
+from suds import WebFault
 import datetime
 import os
 import base64
+import subprocess # Importación para manejo seguro de openssl
 
 
 app = Flask(__name__)
@@ -10,6 +12,9 @@ app = Flask(__name__)
 # ----------------------------------------------------------------------
 # CONFIGURACIÓN CUITS Y CERTIFICADOS
 # (los archivos deben estar en la raíz del repo)
+#
+# !! ATENCIÓN: Asegúrate de que estos nombres coincidan EXACTAMENTE
+# !! con los archivos subidos a tu entorno de Render.
 # ----------------------------------------------------------------------
 
 CUIT_1 = "27239676931"
@@ -27,7 +32,7 @@ KEY_2  = "cuit_27461124149.key"
 
 WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
 
-# HOMOLOGACIÓN
+# HOMOLOGACIÓN (Entorno de pruebas)
 WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
 # PRODUCCIÓN (activar cuando esté todo OK)
@@ -46,33 +51,34 @@ def load_cert(cuit_emisor):
         raise Exception("CUIT emisor sin certificado configurado")
 
 def create_cms(cert_file, key_file):
-    cmd = (
-        f"openssl cms -sign -in tra.xml "
-        f"-signer {cert_file} -inkey {key_file} "
-        f"-nodetach -outform der > cms.der"
-    )
-    os.system(cmd)
+    # Utilizamos subprocess para ejecutar openssl y capturar la salida y errores
+    cmd_list = [
+        "openssl", "cms", "-sign", "-in", "tra.xml",
+        "-signer", cert_file, "-inkey", key_file,
+        "-nodetach", "-outform", "der"
+    ]
+    
+    try:
+        # Ejecuta el comando y captura la salida binaria
+        result = subprocess.run(cmd_list, capture_output=True, check=True)
+        cms_bin = result.stdout
+        
+    except subprocess.CalledProcessError as e:
+        # Si openssl falla (ej: no encuentra archivos), captura el error real
+        error_message = e.stderr.decode('utf-8', errors='ignore')
+        raise Exception(f"Error OpenSSL al firmar: {error_message}. Revise nombres/permisos de los archivos de certificado y clave.")
 
-    # leer binario
-    with open("cms.der", "rb") as f:
-        cms_bin = f.read()
-
-    # base64 SIN saltos de línea
+    # Base64 SIN saltos de línea del binario capturado
     cms_b64 = base64.b64encode(cms_bin).decode("ascii")
 
     return cms_b64
 
 
-import datetime # Asegúrate que esta importación esté al inicio
-# ...
 def get_token_sign(cert_file, key_file):
-    # Usar UTC/utcnow() para evitar problemas de zona horaria y añadir 'Z'
+    # Corregido el manejo de la hora para usar UTC y formato AFIP (YYYY-MM-DDThh:mm:ss.000Z)
     now = datetime.datetime.utcnow()
     
-    # Generation Time: Ahora
     generation_time = now.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-
-    # Expiration Time: 10 minutos en el futuro
     expiration_time = (now + datetime.timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
 
     tra = f"""<loginTicketRequest version="1.0">
@@ -90,9 +96,21 @@ def get_token_sign(cert_file, key_file):
     cms = create_cms(cert_file, key_file)
 
     client = Client(WSAA)
-    ta = client.service.loginCms(cms)
+    
+    try:
+        # Llamada al servicio WSAA (Autenticación)
+        ta = client.service.loginCms(cms)
+        
+        # Si la llamada es exitosa
+        return ta.credentials.token, ta.credentials.sign
 
-    return ta.credentials.token, ta.credentials.sign
+    except WebFault as e:
+        # Captura errores de la AFIP (e.g., "Computador no autorizado")
+        error_msg = e.fault.faultstring
+        raise Exception(f"Error WSAA (AFIP): {error_msg}. Revise la relación del certificado con el servicio en el portal de AFIP.")
+    except Exception as e:
+        # Captura otros errores (conexión, etc.)
+        raise Exception(f"Error al obtener Token: {str(e)}")
 
 
 def get_wsfe_client(token, sign, cuit_emisor):
@@ -120,17 +138,22 @@ def crear_factura(data):
 
     cert_file, key_file = load_cert(cuit_emisor)
 
-    # 1) Token AFIP
+    # 1) Token AFIP (puede lanzar excepción)
     token, sign = get_token_sign(cert_file, key_file)
 
     # 2) Cliente WSFE
     client = get_wsfe_client(token, sign, cuit_emisor)
 
     # 3) Último comprobante
-    ultimo = client.service.FECompUltimoAutorizado(
-        punto_venta, tipo_cbte
-    )
-    cbte_nro = ultimo.CbteNro + 1
+    try:
+        ultimo = client.service.FECompUltimoAutorizado(
+            punto_venta, tipo_cbte
+        )
+        cbte_nro = ultimo.CbteNro + 1
+    except WebFault as e:
+        error_msg = e.fault.faultstring
+        raise Exception(f"Error al obtener último comprobante (AFIP): {error_msg}")
+
 
     # 4) Comprobante (ESTRUCTURA CORRECTA AFIP)
     fe_cae_req = {
@@ -155,14 +178,23 @@ def crear_factura(data):
     }
 
     # 5) Solicitar CAE
-    res = client.service.FECAESolicitar(
-        {"FeCAEReq": fe_cae_req}
-    )
-
-    det = res.FeDetResp[0]
-
+    try:
+        res = client.service.FECAESolicitar(
+            {"FeCAEReq": fe_cae_req}
+        )
+        det = res.FeDetResp[0]
+    except WebFault as e:
+        error_msg = e.fault.faultstring
+        raise Exception(f"Error al solicitar CAE (AFIP): {error_msg}")
+    
+    
     if not det.CAE:
-        raise Exception(det.Observaciones[0].Msg)
+        # Si el CAE es nulo, buscamos la observación/error de la AFIP
+        if hasattr(det, 'Observaciones') and det.Observaciones:
+            raise Exception(f"AFIP rechazó la factura: {det.Observaciones[0].Msg}")
+        else:
+            raise Exception("AFIP rechazó la factura sin mensaje de error claro.")
+
 
     return {
         "cbte_nro": cbte_nro,
@@ -182,6 +214,7 @@ def facturar():
         factura = crear_factura(data)
         return jsonify({"status": "OK", "factura": factura})
     except Exception as e:
+        # Todos los errores específicos (OpenSSL, WSAA, WSFE) son devueltos aquí
         return jsonify({"status": "ERROR", "detalle": str(e)})
 
 
