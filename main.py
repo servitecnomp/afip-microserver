@@ -173,24 +173,30 @@ def crear_factura(data):
 
 
     # 4) Comprobante (ESTRUCTURA CORRECTA AFIP)
+    # Convertir el importe a formato con 2 decimales
+    importe_formatted = round(float(importe), 2)
+    
     fe_cae_req = {
         "FeCabReq": {
             "CantReg": 1,
-            "PtoVta": punto_venta,
-            "CbteTipo": tipo_cbte,
+            "PtoVta": int(punto_venta),
+            "CbteTipo": int(tipo_cbte),
         },
         "FeDetReq": [{
             "Concepto": 1,
             "DocTipo": 80,  # CUIT
             "DocNro": int(cuit_receptor),
-            "CbteDesde": cbte_nro,
-            "CbteHasta": cbte_nro,
+            "CbteDesde": int(cbte_nro),
+            "CbteHasta": int(cbte_nro),
             "CbteFch": int(datetime.datetime.now().strftime("%Y%m%d")),
-            "ImpTotal": importe,
-            "ImpNeto": importe,
-            "ImpIVA": 0,
+            "ImpTotal": importe_formatted,
+            "ImpTotConc": 0.00,
+            "ImpNeto": importe_formatted,
+            "ImpOpEx": 0.00,
+            "ImpTrib": 0.00,
+            "ImpIVA": 0.00,
             "MonId": "PES",
-            "MonCotiz": 1,
+            "MonCotiz": 1.00,
         }]
     }
 
