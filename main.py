@@ -1,12 +1,8 @@
 from flask import Flask, request, jsonify
-from suds.client import Client
-from suds import WebFault
 import datetime
 import os
-import base64
-import subprocess
-import xml.etree.ElementTree as ET
-
+from pyafipws.wsaa import WSAA
+from pyafipws.wsfev1 import WSFEv1
 
 app = Flask(__name__)
 
@@ -23,17 +19,12 @@ KEY_1  = "cuit_27239676931.key"
 CERT_2 = "facturacion27461124149.crt"
 KEY_2  = "cuit_27461124149.key"
 
-# ----------------------------------------------------------------------
-# AFIP ENDPOINTS
-# ----------------------------------------------------------------------
-
-WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
-
-# HOMOLOGACIÓN (Entorno de pruebas)
-WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
+# HOMOLOGACIÓN
+WSAA_URL = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
+WSFEV1_URL = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
 # PRODUCCIÓN (activar cuando esté todo OK)
-# WSFE = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
+# WSFEV1_URL = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
 # ----------------------------------------------------------------------
 # UTILIDADES
@@ -47,104 +38,29 @@ def load_cert(cuit_emisor):
     else:
         raise Exception("CUIT emisor sin certificado configurado")
 
-def create_cms(tra_path, cert_file, key_file):
-    cmd_list = [
-        "openssl", "cms", "-sign", "-in", tra_path,
-        "-signer", cert_file, "-inkey", key_file,
-        "-nodetach", "-outform", "der"
-    ]
+
+def get_token_sign(cert_file, key_file, cuit):
+    """Obtener token y sign de AFIP usando WSAA"""
+    wsaa = WSAA()
     
-    try:
-        result = subprocess.run(cmd_list, capture_output=True, check=True)
-        cms_bin = result.stdout
-        
-    except subprocess.CalledProcessError as e:
-        error_message = e.stderr.decode('utf-8', errors='ignore')
-        raise Exception(f"Error OpenSSL al firmar: {error_message}. Revise nombres/permisos de los archivos de certificado y clave.")
-
-    cms_b64 = base64.b64encode(cms_bin).decode("ascii")
-    return cms_b64
-
-
-def get_token_sign(cert_file, key_file):
-    now = datetime.datetime.utcnow()
+    # Configurar certificado
+    wsaa.Cuit = cuit
+    wsaa.Certificado = cert_file
+    wsaa.PrivateKey = key_file
     
-    generation_time = now.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-    expiration_time = (now + datetime.timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-
-    tra = f"""<loginTicketRequest version="1.0">
-  <header>
-    <uniqueId>{int(now.timestamp())}</uniqueId>
-    <generationTime>{generation_time}</generationTime>
-    <expirationTime>{expiration_time}</expirationTime>
-  </header>
-  <service>wsfe</service>
-</loginTicketRequest>"""
-
-    tra_path = os.path.join(os.getcwd(), "tra.xml") 
+    # Crear ticket de acceso
+    tra = wsaa.CreateTRA(service="wsfe")
+    cms = wsaa.SignTRA(tra, cert_file, key_file)
     
-    with open(tra_path, "w") as f:
-        f.write(tra) 
-
-    cms = create_cms(tra_path, cert_file, key_file) 
+    # Llamar a WSAA
+    wsaa.Conectar(wsdl=WSAA_URL)
+    wsaa.LoginCMS(cms)
     
-    os.remove(tra_path)
-
-    client = Client(WSAA)
+    if wsaa.Excepcion:
+        raise Exception(f"Error WSAA: {wsaa.Excepcion}")
     
-    try:
-        # Llamada al servicio WSAA (Autenticación)
-        response = client.service.loginCms(cms)
-        
-        # CORRECCIÓN: Parsear la respuesta XML manualmente
-        # porque suds a veces no parsea bien los namespaces de AFIP
-        response_xml = str(response)
-        
-        # Intentar extraer usando el objeto directamente primero
-        try:
-            token = response.credentials.token
-            sign = response.credentials.sign
-        except AttributeError:
-            # Si falla, parsear el XML manualmente
-            root = ET.fromstring(response_xml)
-            
-            # Buscar en todos los namespaces posibles
-            token = None
-            sign = None
-            
-            for elem in root.iter():
-                if 'token' in elem.tag.lower():
-                    token = elem.text
-                if 'sign' in elem.tag.lower():
-                    sign = elem.text
-            
-            if not token or not sign:
-                raise Exception("No se pudo extraer token/sign de la respuesta WSAA")
-        
-        return token, sign
+    return wsaa.Token, wsaa.Sign
 
-    except WebFault as e:
-        error_msg = e.fault.faultstring
-        raise Exception(f"Error WSAA (AFIP): {error_msg}. Revisar configuración de relación de certificado.")
-    except Exception as e:
-        raise Exception(f"Error al obtener Token: {str(e)}. Intente re-deployar.")
-
-
-def get_wsfe_client(token, sign, cuit_emisor):
-    client = Client(WSFE)
-    client.set_options(
-        soapheaders={
-            "Token": token,
-            "Sign": sign,
-            "Cuit": cuit_emisor,
-        }
-    )
-    return client
-
-
-# ----------------------------------------------------------------------
-# FACTURACIÓN
-# ----------------------------------------------------------------------
 
 def crear_factura(data):
     cuit_emisor   = str(data["cuit_emisor"])
@@ -155,73 +71,73 @@ def crear_factura(data):
 
     cert_file, key_file = load_cert(cuit_emisor)
 
-    # 1) Token AFIP (puede lanzar excepción)
-    token, sign = get_token_sign(cert_file, key_file)
-
-    # 2) Cliente WSFE
-    client = get_wsfe_client(token, sign, cuit_emisor)
-
-    # 3) Último comprobante
+    # 1) Autenticación WSAA
     try:
-        ultimo = client.service.FECompUltimoAutorizado(
-            punto_venta, tipo_cbte
-        )
-        cbte_nro = ultimo.CbteNro + 1
-    except WebFault as e:
-        error_msg = e.fault.faultstring
-        raise Exception(f"Error al obtener último comprobante (AFIP): {error_msg}")
+        token, sign = get_token_sign(cert_file, key_file, cuit_emisor)
+    except Exception as e:
+        raise Exception(f"Error al obtener token AFIP: {str(e)}")
 
-
-    # 4) Comprobante (ESTRUCTURA CORRECTA AFIP)
-    # Convertir el importe a formato con 2 decimales
-    importe_formatted = round(float(importe), 2)
+    # 2) Conectar a WSFEv1
+    wsfe = WSFEv1()
+    wsfe.Cuit = cuit_emisor
+    wsfe.Token = token
+    wsfe.Sign = sign
     
-    fe_cae_req = {
-        "FeCabReq": {
-            "CantReg": 1,
-            "PtoVta": int(punto_venta),
-            "CbteTipo": int(tipo_cbte),
-        },
-        "FeDetReq": [{
-            "Concepto": 1,
-            "DocTipo": 80,  # CUIT
-            "DocNro": int(cuit_receptor),
-            "CbteDesde": int(cbte_nro),
-            "CbteHasta": int(cbte_nro),
-            "CbteFch": int(datetime.datetime.now().strftime("%Y%m%d")),
-            "ImpTotal": importe_formatted,
-            "ImpTotConc": 0.00,
-            "ImpNeto": importe_formatted,
-            "ImpOpEx": 0.00,
-            "ImpTrib": 0.00,
-            "ImpIVA": 0.00,
-            "MonId": "PES",
-            "MonCotiz": 1.00,
-        }]
-    }
+    cache_dir = ""  # No usar cache
+    wsfe.Conectar(cache_dir, WSFEV1_URL)
+    
+    if wsfe.Excepcion:
+        raise Exception(f"Error al conectar a WSFE: {wsfe.Excepcion}")
+
+    # 3) Obtener último comprobante
+    ultimo = wsfe.CompUltimoAutorizado(tipo_cbte, punto_venta)
+    
+    if wsfe.Excepcion:
+        raise Exception(f"Error al obtener último comprobante: {wsfe.Excepcion}")
+    
+    cbte_nro = int(ultimo) + 1
+
+    # 4) Crear comprobante
+    fecha = datetime.datetime.now().strftime("%Y%m%d")
+    
+    # Crear factura
+    wsfe.CrearFactura(
+        concepto=1,              # Productos
+        tipo_doc=80,             # CUIT
+        nro_doc=int(cuit_receptor),
+        tipo_cbte=tipo_cbte,
+        punto_vta=punto_venta,
+        cbt_desde=cbte_nro,
+        cbt_hasta=cbte_nro,
+        imp_total=importe,
+        imp_tot_conc=0.00,       # Importe neto no gravado
+        imp_neto=importe,        # Importe neto gravado
+        imp_iva=0.00,            # Importe IVA
+        imp_trib=0.00,           # Importe tributos
+        imp_op_ex=0.00,          # Importe operaciones exentas
+        fecha_cbte=fecha,
+        fecha_venc_pago=None,
+        fecha_serv_desde=None,
+        fecha_serv_hasta=None,
+        moneda_id="PES",
+        moneda_ctz=1.000
+    )
 
     # 5) Solicitar CAE
-    try:
-        res = client.service.FECAESolicitar(
-            {"FeCAEReq": fe_cae_req}
-        )
-        det = res.FeDetResp[0]
-    except WebFault as e:
-        error_msg = e.fault.faultstring
-        raise Exception(f"Error al solicitar CAE (AFIP): {error_msg}")
+    wsfe.CAESolicitar()
     
+    if wsfe.Excepcion:
+        raise Exception(f"Error AFIP al solicitar CAE: {wsfe.Excepcion}. {wsfe.ErrMsg}")
     
-    if not det.CAE:
-        if hasattr(det, 'Observaciones') and det.Observaciones:
-            raise Exception(f"AFIP rechazó la factura: {det.Observaciones[0].Msg}")
-        else:
-            raise Exception("AFIP rechazó la factura sin mensaje de error claro.")
-
-
+    # Verificar errores/observaciones
+    if wsfe.Resultado != "A":  # A = Aprobado
+        obs = wsfe.Obs or "Sin descripción"
+        raise Exception(f"AFIP rechazó la factura: {obs}")
+    
     return {
         "cbte_nro": cbte_nro,
-        "cae": det.CAE,
-        "vencimiento": det.CAEFchVto,
+        "cae": wsfe.CAE,
+        "vencimiento": wsfe.Vencimiento,
     }
 
 
@@ -241,12 +157,8 @@ def facturar():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "AFIP Microserver funcionando."
+    return "AFIP Microserver funcionando con PyAfipWS."
 
-
-# ----------------------------------------------------------------------
-# LOCAL DEBUG
-# ----------------------------------------------------------------------
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
