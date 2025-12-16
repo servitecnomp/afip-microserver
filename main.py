@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify
-from suds.client import Client
-from suds import WebFault
-from suds.sax.element import Element
+from zeep import Client
+from zeep.transports import Transport
+from zeep.exceptions import Fault
+from requests import Session
 import datetime
 import os
 import base64
@@ -83,51 +84,17 @@ def get_token_sign(cert_file, key_file):
     
     os.remove(tra_path)
 
-    client = Client(WSAA)
+    session = Session()
+    transport = Transport(session=session)
+    client = Client(WSAA, transport=transport)
     
     try:
         response = client.service.loginCms(cms)
-        
-        # Extraer token y sign
-        try:
-            token = response.credentials.token
-            sign = response.credentials.sign
-        except AttributeError:
-            # Parseo manual si falla
-            import xml.etree.ElementTree as ET
-            response_xml = str(response)
-            root = ET.fromstring(response_xml)
-            
-            token = None
-            sign = None
-            
-            for elem in root.iter():
-                if 'token' in elem.tag.lower():
-                    token = elem.text
-                if 'sign' in elem.tag.lower():
-                    sign = elem.text
-            
-            if not token or not sign:
-                raise Exception("No se pudo extraer token/sign")
-        
-        return token, sign
-
-    except WebFault as e:
-        raise Exception(f"Error WSAA: {e.fault.faultstring}")
+        return response['credentials']['token'], response['credentials']['sign']
+    except Fault as e:
+        raise Exception(f"Error WSAA: {e.message}")
     except Exception as e:
         raise Exception(f"Error token: {str(e)}")
-
-def get_wsfe_client(token, sign, cuit_emisor):
-    client = Client(WSFE)
-    
-    # Crear headers SOAP manualmente
-    token_element = Element('Token').setText(token)
-    sign_element = Element('Sign').setText(sign)
-    cuit_element = Element('Cuit').setText(str(cuit_emisor))
-    
-    client.set_options(soapheaders=[token_element, sign_element, cuit_element])
-    
-    return client
 
 # ----------------------------------------------------------------------
 # FACTURACIÓN
@@ -145,72 +112,84 @@ def crear_factura(data):
     # 1) Token AFIP
     token, sign = get_token_sign(cert_file, key_file)
 
-    # 2) Cliente WSFE
-    client = get_wsfe_client(token, sign, cuit_emisor)
+    # 2) Cliente WSFE con headers
+    session = Session()
+    session.headers.update({
+        'Content-Type': 'text/xml; charset=utf-8'
+    })
+    transport = Transport(session=session)
+    client = Client(WSFE, transport=transport)
 
     # 3) Último comprobante
     try:
-        ultimo = client.service.FECompUltimoAutorizado(punto_venta, tipo_cbte)
-        cbte_nro = ultimo.CbteNro + 1
-    except WebFault as e:
-        raise Exception(f"Error último comprobante: {e.fault.faultstring}")
+        ultimo = client.service.FECompUltimoAutorizado(
+            Auth={'Token': token, 'Sign': sign, 'Cuit': int(cuit_emisor)},
+            PtoVta=punto_venta,
+            CbteTipo=tipo_cbte
+        )
+        cbte_nro = ultimo['CbteNro'] + 1
+    except Fault as e:
+        raise Exception(f"Error último comprobante: {e.message}")
     except Exception as e:
         raise Exception(f"Error último comprobante: {str(e)}")
 
-    # 4) Preparar comprobante usando factory de SUDS
-    factory = client.factory
+    # 4) Preparar comprobante
+    fecha = int(datetime.datetime.now().strftime("%Y%m%d"))
     
-    # Crear estructura usando los tipos del WSDL
-    fe_cab_req = factory.create('FECAECabRequest')
-    fe_cab_req.CantReg = 1
-    fe_cab_req.PtoVta = punto_venta
-    fe_cab_req.CbteTipo = tipo_cbte
+    FeCabReq = {
+        'CantReg': 1,
+        'PtoVta': punto_venta,
+        'CbteTipo': tipo_cbte
+    }
     
-    fe_det_req = factory.create('FECAEDetRequest')
-    fe_det_req.Concepto = 1
-    fe_det_req.DocTipo = 80
-    fe_det_req.DocNro = int(cuit_receptor)
-    fe_det_req.CbteDesde = cbte_nro
-    fe_det_req.CbteHasta = cbte_nro
-    fe_det_req.CbteFch = int(datetime.datetime.now().strftime("%Y%m%d"))
-    fe_det_req.ImpTotal = round(importe, 2)
-    fe_det_req.ImpTotConc = 0.00
-    fe_det_req.ImpNeto = round(importe, 2)
-    fe_det_req.ImpOpEx = 0.00
-    fe_det_req.ImpIVA = 0.00
-    fe_det_req.ImpTrib = 0.00
-    fe_det_req.MonId = 'PES'
-    fe_det_req.MonCotiz = 1.00
-    
-    fe_cae_req = factory.create('FECAERequest')
-    fe_cae_req.FeCabReq = fe_cab_req
-    fe_cae_req.FeDetReq = [fe_det_req]
+    FeDetReq = [{
+        'Concepto': 1,
+        'DocTipo': 80,
+        'DocNro': int(cuit_receptor),
+        'CbteDesde': cbte_nro,
+        'CbteHasta': cbte_nro,
+        'CbteFch': fecha,
+        'ImpTotal': round(importe, 2),
+        'ImpTotConc': 0.00,
+        'ImpNeto': round(importe, 2),
+        'ImpOpEx': 0.00,
+        'ImpIVA': 0.00,
+        'ImpTrib': 0.00,
+        'MonId': 'PES',
+        'MonCotiz': 1.00
+    }]
 
     # 5) Solicitar CAE
     try:
-        res = client.service.FECAESolicitar(fe_cae_req)
+        resultado = client.service.FECAESolicitar(
+            Auth={'Token': token, 'Sign': sign, 'Cuit': int(cuit_emisor)},
+            FeCAEReq={'FeCabReq': FeCabReq, 'FeDetReq': FeDetReq}
+        )
         
-        if hasattr(res, 'Errors') and res.Errors:
-            error_msg = res.Errors.Err[0].Msg if res.Errors.Err else "Error desconocido"
+        # Verificar errores generales
+        if 'Errors' in resultado and resultado['Errors']:
+            error_msg = resultado['Errors']['Err'][0]['Msg']
             raise Exception(f"AFIP error: {error_msg}")
         
-        det = res.FeDetResp.FECAEDetResponse[0]
+        # Obtener respuesta del detalle
+        det_resp = resultado['FeDetResp']['FECAEDetResponse'][0]
         
-        if not det.CAE:
-            if hasattr(det, 'Observaciones') and det.Observaciones:
-                obs_msg = det.Observaciones.Obs[0].Msg
+        # Verificar si hay CAE
+        if not det_resp.get('CAE'):
+            if 'Observaciones' in det_resp and det_resp['Observaciones']:
+                obs_msg = det_resp['Observaciones']['Obs'][0]['Msg']
                 raise Exception(f"AFIP rechazó: {obs_msg}")
             else:
-                raise Exception("AFIP rechazó sin CAE")
+                raise Exception("AFIP rechazó sin CAE ni observaciones")
         
         return {
             "cbte_nro": cbte_nro,
-            "cae": det.CAE,
-            "vencimiento": det.CAEFchVto,
+            "cae": det_resp['CAE'],
+            "vencimiento": det_resp['CAEFchVto'],
         }
         
-    except WebFault as e:
-        raise Exception(f"Error CAE: {e.fault.faultstring}")
+    except Fault as e:
+        raise Exception(f"Error CAE: {e.message}")
     except Exception as e:
         if "AFIP" in str(e):
             raise
@@ -231,7 +210,7 @@ def facturar():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "AFIP Microserver v2 funcionando."
+    return "AFIP Microserver v3 con Zeep funcionando."
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
