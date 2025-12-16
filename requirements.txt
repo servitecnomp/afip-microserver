@@ -5,4 +5,4 @@ reportlab
 python-dotenv
 gunicorn
 Flask
-suds-py3
+pyafipws==2.8.286
