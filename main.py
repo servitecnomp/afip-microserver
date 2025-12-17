@@ -3,12 +3,32 @@ from zeep import Client
 from zeep.transports import Transport
 from zeep.exceptions import Fault
 from requests import Session
+from requests.adapters import HTTPAdapter
+from urllib3.util.ssl_ import create_urllib3_context
 import datetime
 import os
 import base64
 import subprocess
+import ssl
 
 app = Flask(__name__)
+
+# Configuración SSL para permitir conexión a AFIP
+class DESAdapter(HTTPAdapter):
+    """
+    Adaptador que permite cifrados DH antiguos para conectarse a AFIP
+    """
+    def init_poolmanager(self, *args, **kwargs):
+        context = create_urllib3_context()
+        context.set_ciphers('DEFAULT@SECLEVEL=1')
+        kwargs['ssl_context'] = context
+        return super(DESAdapter, self).init_poolmanager(*args, **kwargs)
+    
+    def proxy_manager_for(self, *args, **kwargs):
+        context = create_urllib3_context()
+        context.set_ciphers('DEFAULT@SECLEVEL=1')
+        kwargs['ssl_context'] = context
+        return super(DESAdapter, self).proxy_manager_for(*args, **kwargs)
 
 # ----------------------------------------------------------------------
 # CONFIGURACIÓN CUITS Y CERTIFICADOS
@@ -89,7 +109,9 @@ def get_token_sign(cert_file, key_file):
     
     os.remove(tra_path)
 
+    # Usar sesión con adaptador SSL personalizado
     session = Session()
+    session.mount('https://', DESAdapter())
     transport = Transport(session=session)
     client = Client(WSAA, transport=transport)
     
@@ -170,9 +192,10 @@ def crear_factura(data):
     print("\n1. Obteniendo token AFIP...")
     token, sign = get_token_sign(cert_file, key_file)
 
-    # 2) Cliente WSFE con headers
+    # 2) Cliente WSFE con headers y SSL configurado
     print("2. Conectando a WSFE...")
     session = Session()
+    session.mount('https://', DESAdapter())
     session.headers.update({
         'Content-Type': 'text/xml; charset=utf-8'
     })
