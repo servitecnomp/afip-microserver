@@ -90,10 +90,46 @@ def get_token_sign(cert_file, key_file):
     
     try:
         response = client.service.loginCms(cms)
-        # Zeep devuelve objetos, no diccionarios
-        token = response.credentials.token
-        sign = response.credentials.sign
+        
+        # Debug: ver qué tipo de objeto es
+        print(f"DEBUG Response type: {type(response)}")
+        print(f"DEBUG Response: {response}")
+        
+        # Intentar diferentes formas de acceder
+        try:
+            # Forma 1: objeto con atributos
+            token = response.credentials.token
+            sign = response.credentials.sign
+        except AttributeError:
+            try:
+                # Forma 2: diccionario
+                token = response['credentials']['token']
+                sign = response['credentials']['sign']
+            except (KeyError, TypeError):
+                # Forma 3: buscar en el XML directamente
+                import xml.etree.ElementTree as ET
+                
+                # Convertir a string si es necesario
+                response_str = str(response)
+                
+                # Parsear XML
+                root = ET.fromstring(response_str)
+                
+                token = None
+                sign = None
+                
+                for elem in root.iter():
+                    tag_lower = elem.tag.lower()
+                    if 'token' in tag_lower and elem.text:
+                        token = elem.text
+                    if 'sign' in tag_lower and elem.text:
+                        sign = elem.text
+                
+                if not token or not sign:
+                    raise Exception(f"No se pudo extraer token/sign. Response: {response_str[:500]}")
+        
         return token, sign
+        
     except Fault as e:
         raise Exception(f"Error WSAA: {e.message}")
     except Exception as e:
