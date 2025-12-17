@@ -172,8 +172,11 @@ def crear_factura(data):
     except Exception as e:
         raise Exception(f"Error último comprobante: {str(e)}")
 
-    # 4) Preparar comprobante
+    # 4) Preparar comprobante usando tipos del WSDL
     fecha = int(datetime.datetime.now().strftime("%Y%m%d"))
+    
+    # Usar el factory de zeep para crear tipos correctos
+    array_type = client.get_type('ns0:ArrayOfFECAEDetRequest')
     
     FeCabReq = {
         'CantReg': 1,
@@ -181,7 +184,7 @@ def crear_factura(data):
         'CbteTipo': tipo_cbte
     }
     
-    FeDetReq = [{
+    FeDetReq = {
         'Concepto': 1,
         'DocTipo': 80,
         'DocNro': int(cuit_receptor),
@@ -196,13 +199,18 @@ def crear_factura(data):
         'ImpTrib': 0.00,
         'MonId': 'PES',
         'MonCotiz': 1.00
-    }]
+    }
+    
+    FeCAEReq = {
+        'FeCabReq': FeCabReq,
+        'FeDetReq': {'FECAEDetRequest': [FeDetReq]}
+    }
 
     # 5) Solicitar CAE
     try:
         resultado = client.service.FECAESolicitar(
             Auth={'Token': token, 'Sign': sign, 'Cuit': int(cuit_emisor)},
-            FeCAEReq={'FeCabReq': FeCabReq, 'FeDetReq': FeDetReq}
+            FeCAEReq=FeCAEReq
         )
         
         # Verificar errores generales
