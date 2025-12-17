@@ -28,7 +28,12 @@ KEY_2  = "cuit_27461124149.key"
 # ----------------------------------------------------------------------
 
 WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
-WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
+
+# PRODUCCIÓN (ACTIVADO)
+WSFE = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
+
+# HOMOLOGACIÓN (comentado)
+# WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
 # ----------------------------------------------------------------------
 # UTILIDADES
