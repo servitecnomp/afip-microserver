@@ -98,18 +98,19 @@ def get_token_sign(cert_file, key_file):
         
         # Debug: ver qué tipo de objeto es
         print(f"DEBUG Response type: {type(response)}")
-        print(f"DEBUG Response: {response}")
         
         # Intentar diferentes formas de acceder
         try:
             # Forma 1: objeto con atributos
             token = response.credentials.token
             sign = response.credentials.sign
+            print("✓ Token y Sign obtenidos exitosamente")
         except AttributeError:
             try:
                 # Forma 2: diccionario
                 token = response['credentials']['token']
                 sign = response['credentials']['sign']
+                print("✓ Token y Sign obtenidos exitosamente (dict)")
             except (KeyError, TypeError):
                 # Forma 3: buscar en el XML directamente
                 import xml.etree.ElementTree as ET
@@ -132,6 +133,8 @@ def get_token_sign(cert_file, key_file):
                 
                 if not token or not sign:
                     raise Exception(f"No se pudo extraer token/sign. Response: {response_str[:500]}")
+                
+                print("✓ Token y Sign obtenidos exitosamente (XML)")
         
         return token, sign
         
@@ -145,18 +148,30 @@ def get_token_sign(cert_file, key_file):
 # ----------------------------------------------------------------------
 
 def crear_factura(data):
-    cuit_emisor   = str(data["cuit_emisor"])
-    cuit_receptor = str(data["cuit_receptor"])
+    # Limpiar CUITs de guiones y espacios
+    cuit_emisor   = str(data["cuit_emisor"]).replace("-", "").replace(" ", "").strip()
+    cuit_receptor = str(data["cuit_receptor"]).replace("-", "").replace(" ", "").strip()
     punto_venta   = int(data["punto_venta"])
     tipo_cbte     = int(data["tipo_cbte"])
     importe       = float(data["importe"])
+    
+    # Log para debugging
+    print(f"\n=== INICIANDO FACTURACIÓN ===")
+    print(f"CUIT Emisor: {cuit_emisor}")
+    print(f"CUIT Receptor: {cuit_receptor}")
+    print(f"Punto Venta: {punto_venta}")
+    print(f"Tipo Comprobante: {tipo_cbte}")
+    print(f"Importe: {importe}")
 
     cert_file, key_file = load_cert(cuit_emisor)
+    print(f"Certificado: {cert_file}")
 
     # 1) Token AFIP
+    print("\n1. Obteniendo token AFIP...")
     token, sign = get_token_sign(cert_file, key_file)
 
     # 2) Cliente WSFE con headers
+    print("2. Conectando a WSFE...")
     session = Session()
     session.headers.update({
         'Content-Type': 'text/xml; charset=utf-8'
@@ -165,6 +180,7 @@ def crear_factura(data):
     client = Client(WSFE, transport=transport)
 
     # 3) Último comprobante
+    print(f"3. Consultando último comprobante (PtoVta: {punto_venta}, Tipo: {tipo_cbte})...")
     try:
         ultimo = client.service.FECompUltimoAutorizado(
             Auth={'Token': token, 'Sign': sign, 'Cuit': int(cuit_emisor)},
@@ -172,16 +188,17 @@ def crear_factura(data):
             CbteTipo=tipo_cbte
         )
         cbte_nro = ultimo.CbteNro + 1
+        print(f"✓ Último comprobante: {ultimo.CbteNro}, Próximo: {cbte_nro}")
     except Fault as e:
+        print(f"✗ Error en último comprobante: {e.message}")
         raise Exception(f"Error último comprobante: {e.message}")
     except Exception as e:
+        print(f"✗ Error en último comprobante: {str(e)}")
         raise Exception(f"Error último comprobante: {str(e)}")
 
-    # 4) Preparar comprobante usando tipos del WSDL
+    # 4) Preparar comprobante
+    print("4. Preparando comprobante...")
     fecha = int(datetime.datetime.now().strftime("%Y%m%d"))
-    
-    # Usar el factory de zeep para crear tipos correctos
-    array_type = client.get_type('ns0:ArrayOfFECAEDetRequest')
     
     FeCabReq = {
         'CantReg': 1,
@@ -210,29 +227,55 @@ def crear_factura(data):
         'FeCabReq': FeCabReq,
         'FeDetReq': {'FECAEDetRequest': [FeDetReq]}
     }
+    
+    print(f"Comprobante preparado:")
+    print(f"  - Fecha: {fecha}")
+    print(f"  - Número: {cbte_nro}")
+    print(f"  - Doc Receptor: {int(cuit_receptor)}")
+    print(f"  - Importe Total: {round(importe, 2)}")
 
     # 5) Solicitar CAE
+    print("5. Solicitando CAE a AFIP...")
     try:
         resultado = client.service.FECAESolicitar(
             Auth={'Token': token, 'Sign': sign, 'Cuit': int(cuit_emisor)},
             FeCAEReq=FeCAEReq
         )
         
+        print(f"Respuesta AFIP recibida")
+        
         # Verificar errores generales
         if hasattr(resultado, 'Errors') and resultado.Errors:
             error_msg = resultado.Errors.Err[0].Msg
-            raise Exception(f"AFIP error: {error_msg}")
+            error_code = resultado.Errors.Err[0].Code
+            print(f"✗ AFIP devolvió error {error_code}: {error_msg}")
+            raise Exception(f"AFIP error {error_code}: {error_msg}")
         
         # Obtener respuesta del detalle
         det_resp = resultado.FeDetResp.FECAEDetResponse[0]
+        
+        print(f"Resultado detallado:")
+        print(f"  - Resultado: {det_resp.Resultado}")
+        
+        # Verificar observaciones
+        if hasattr(det_resp, 'Observaciones') and det_resp.Observaciones:
+            for obs in det_resp.Observaciones.Obs:
+                print(f"  - Observación {obs.Code}: {obs.Msg}")
         
         # Verificar si hay CAE
         if not det_resp.CAE:
             if hasattr(det_resp, 'Observaciones') and det_resp.Observaciones:
                 obs_msg = det_resp.Observaciones.Obs[0].Msg
-                raise Exception(f"AFIP rechazó: {obs_msg}")
+                obs_code = det_resp.Observaciones.Obs[0].Code
+                print(f"✗ AFIP rechazó (Obs {obs_code}): {obs_msg}")
+                raise Exception(f"AFIP rechazó (código {obs_code}): {obs_msg}")
             else:
+                print(f"✗ AFIP rechazó sin CAE ni observaciones")
                 raise Exception("AFIP rechazó sin CAE ni observaciones")
+        
+        print(f"✓ CAE obtenido: {det_resp.CAE}")
+        print(f"✓ Vencimiento: {det_resp.CAEFchVto}")
+        print(f"=== FACTURACIÓN EXITOSA ===\n")
         
         return {
             "cbte_nro": cbte_nro,
@@ -241,10 +284,12 @@ def crear_factura(data):
         }
         
     except Fault as e:
-        raise Exception(f"Error CAE: {e.message}")
+        print(f"✗ Fault en CAE: {e.message}")
+        raise Exception(f"Error CAE (Fault): {e.message}")
     except Exception as e:
         if "AFIP" in str(e):
             raise
+        print(f"✗ Exception en CAE: {str(e)}")
         raise Exception(f"Error CAE: {str(e)}")
 
 # ----------------------------------------------------------------------
@@ -255,14 +300,37 @@ def crear_factura(data):
 def facturar():
     try:
         data = request.json
+        print(f"\n{'='*60}")
+        print(f"NUEVA SOLICITUD DE FACTURACIÓN")
+        print(f"{'='*60}")
         factura = crear_factura(data)
         return jsonify({"status": "OK", "factura": factura})
     except Exception as e:
+        print(f"\n{'='*60}")
+        print(f"ERROR EN FACTURACIÓN: {str(e)}")
+        print(f"{'='*60}\n")
         return jsonify({"status": "ERROR", "detalle": str(e)})
 
 @app.route("/", methods=["GET"])
 def home():
-    return "AFIP Microserver v3 con Zeep funcionando."
+    return "AFIP Microserver v4 - Mejorado con logging completo"
+
+@app.route("/test", methods=["GET"])
+def test():
+    """Endpoint de prueba para verificar configuración"""
+    return jsonify({
+        "status": "OK",
+        "message": "Servidor funcionando correctamente",
+        "cuits_configurados": [CUIT_1, CUIT_2],
+        "certificados": {
+            CUIT_1: {"cert": CERT_1, "key": KEY_1},
+            CUIT_2: {"cert": CERT_2, "key": KEY_2}
+        },
+        "endpoints": {
+            "WSAA": WSAA,
+            "WSFE": WSFE
+        }
+    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
