@@ -90,7 +90,10 @@ def get_token_sign(cert_file, key_file):
     
     try:
         response = client.service.loginCms(cms)
-        return response['credentials']['token'], response['credentials']['sign']
+        # Zeep devuelve objetos, no diccionarios
+        token = response.credentials.token
+        sign = response.credentials.sign
+        return token, sign
     except Fault as e:
         raise Exception(f"Error WSAA: {e.message}")
     except Exception as e:
@@ -127,7 +130,7 @@ def crear_factura(data):
             PtoVta=punto_venta,
             CbteTipo=tipo_cbte
         )
-        cbte_nro = ultimo['CbteNro'] + 1
+        cbte_nro = ultimo.CbteNro + 1
     except Fault as e:
         raise Exception(f"Error último comprobante: {e.message}")
     except Exception as e:
@@ -167,25 +170,25 @@ def crear_factura(data):
         )
         
         # Verificar errores generales
-        if 'Errors' in resultado and resultado['Errors']:
-            error_msg = resultado['Errors']['Err'][0]['Msg']
+        if hasattr(resultado, 'Errors') and resultado.Errors:
+            error_msg = resultado.Errors.Err[0].Msg
             raise Exception(f"AFIP error: {error_msg}")
         
         # Obtener respuesta del detalle
-        det_resp = resultado['FeDetResp']['FECAEDetResponse'][0]
+        det_resp = resultado.FeDetResp.FECAEDetResponse[0]
         
         # Verificar si hay CAE
-        if not det_resp.get('CAE'):
-            if 'Observaciones' in det_resp and det_resp['Observaciones']:
-                obs_msg = det_resp['Observaciones']['Obs'][0]['Msg']
+        if not det_resp.CAE:
+            if hasattr(det_resp, 'Observaciones') and det_resp.Observaciones:
+                obs_msg = det_resp.Observaciones.Obs[0].Msg
                 raise Exception(f"AFIP rechazó: {obs_msg}")
             else:
                 raise Exception("AFIP rechazó sin CAE ni observaciones")
         
         return {
             "cbte_nro": cbte_nro,
-            "cae": det_resp['CAE'],
-            "vencimiento": det_resp['CAEFchVto'],
+            "cae": det_resp.CAE,
+            "vencimiento": det_resp.CAEFchVto,
         }
         
     except Fault as e:
