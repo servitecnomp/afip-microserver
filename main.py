@@ -43,6 +43,22 @@ KEY_1  = "cuit_27239676931.key"
 CERT_2 = "facturacion27461124149.crt"
 KEY_2  = "cuit_27461124149.key"
 
+# Datos de los emisores
+EMISOR_DATA = {
+    "27239676931": {
+        "razon_social": "DEVRIES MARIA PAULA",
+        "domicilio": "Rodriguez Peña 1789 - Mar Del Plata Sur, Buenos Aires",
+        "ingresos_brutos": "27239676931",
+        "inicio_actividades": "01/01/2021"
+    },
+    "27461124149": {
+        "razon_social": "CACCIATO MARIA MERCEDES",
+        "domicilio": "General Paz 4662 - Mar Del Plata Sur, Buenos Aires",
+        "ingresos_brutos": "27461124149",
+        "inicio_actividades": "01/12/2023"
+    }
+}
+
 # ----------------------------------------------------------------------
 # AFIP ENDPOINTS
 # ----------------------------------------------------------------------
