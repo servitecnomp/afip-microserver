@@ -1,5 +1,6 @@
-Flask
-zeep
-requests
-gunicorn
-
+Flask==3.0.0
+zeep==4.2.1
+requests==2.31.0
+lxml==5.1.0
+reportlab==4.0.7
+Pillow==10.1.0
