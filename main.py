@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 from zeep import Client
 from zeep.transports import Transport
 from zeep.exceptions import Fault
@@ -10,7 +10,6 @@ import os
 import base64
 import subprocess
 import ssl
-from pdf_generator import crear_pdf_factura
 
 app = Flask(__name__)
 
@@ -49,12 +48,7 @@ KEY_2  = "cuit_27461124149.key"
 # ----------------------------------------------------------------------
 
 WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
-
-# PRODUCCIÓN (ACTIVADO)
 WSFE = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
-
-# HOMOLOGACIÓN (comentado)
-# WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
 # ----------------------------------------------------------------------
 # UTILIDADES
@@ -328,78 +322,16 @@ def facturar():
         print(f"NUEVA SOLICITUD DE FACTURACIÓN")
         print(f"{'='*60}")
         factura = crear_factura(data)
-        
-        # Generar PDF si se solicita
-        pdf_url = None
-        if data.get("generar_pdf", True):  # Por defecto genera PDF
-            try:
-                # Preparar datos para el PDF
-                datos_pdf = {
-                    "cuit_emisor": data["cuit_emisor"],
-                    "cuit_receptor": data["cuit_receptor"],
-                    "punto_venta": data["punto_venta"],
-                    "tipo_cbte": data["tipo_cbte"],
-                    "cbte_nro": factura["cbte_nro"],
-                    "fecha_emision": datetime.datetime.now().strftime("%d/%m/%Y"),
-                    "cae": factura["cae"],
-                    "vencimiento_cae": factura["vencimiento"],
-                    "importe": data["importe"],
-                    "descripcion": data.get("descripcion", "")
-                }
-                
-                # Generar PDF
-                pdf_filename = f"factura_{data['cuit_emisor']}_{str(data['punto_venta']).zfill(5)}_{str(factura['cbte_nro']).zfill(8)}.pdf"
-                pdf_path = os.path.join("/tmp", pdf_filename)
-                logo_path = "logo.jpeg"  # Logo debe estar en el directorio del servidor
-                
-                crear_pdf_factura(datos_pdf, logo_path, pdf_path)
-                
-                # Guardar PDF en un directorio accesible
-                output_pdf_dir = os.path.join(os.getcwd(), "pdfs")
-                os.makedirs(output_pdf_dir, exist_ok=True)
-                final_pdf_path = os.path.join(output_pdf_dir, pdf_filename)
-                
-                # Copiar PDF
-                import shutil
-                shutil.copy(pdf_path, final_pdf_path)
-                
-                pdf_url = f"/descargar_pdf/{pdf_filename}"
-                print(f"✓ PDF generado: {pdf_filename}")
-                
-            except Exception as e:
-                print(f"⚠ Error generando PDF: {str(e)}")
-                # Continuar sin PDF si hay error
-        
-        response = {
-            "status": "OK",
-            "factura": factura
-        }
-        
-        if pdf_url:
-            response["pdf_url"] = pdf_url
-            
-        return jsonify(response)
+        return jsonify({"status": "OK", "factura": factura})
     except Exception as e:
         print(f"\n{'='*60}")
         print(f"ERROR EN FACTURACIÓN: {str(e)}")
         print(f"{'='*60}\n")
         return jsonify({"status": "ERROR", "detalle": str(e)})
 
-@app.route("/descargar_pdf/<filename>", methods=["GET"])
-def descargar_pdf(filename):
-    """Endpoint para descargar PDFs generados"""
-    try:
-        pdf_path = os.path.join(os.getcwd(), "pdfs", filename)
-        if os.path.exists(pdf_path):
-            return send_file(pdf_path, as_attachment=True, download_name=filename, mimetype='application/pdf')
-        else:
-            return jsonify({"error": "PDF no encontrado"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 @app.route("/", methods=["GET"])
 def home():
-    return "AFIP Microserver v4 - Mejorado con logging completo"
+    return "AFIP Microserver v4 - Funcionando correctamente"
 
 @app.route("/test", methods=["GET"])
 def test():
