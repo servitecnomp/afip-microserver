@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from zeep import Client
 from zeep.transports import Transport
 from zeep.exceptions import Fault
@@ -10,8 +10,16 @@ import os
 import base64
 import subprocess
 import ssl
+from pdf_generator import crear_pdf_factura
 
 app = Flask(__name__)
+
+# Directorio para PDFs
+PDF_DIR = os.path.join(os.path.dirname(__file__), "pdfs")
+os.makedirs(PDF_DIR, exist_ok=True)
+
+# Logo path
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.jpeg")
 
 # Configuración SSL para permitir conexión a AFIP
 class DESAdapter(HTTPAdapter):
@@ -338,6 +346,45 @@ def facturar():
         print(f"NUEVA SOLICITUD DE FACTURACIÓN")
         print(f"{'='*60}")
         factura = crear_factura(data)
+        
+        # Generar PDF automáticamente
+        print("Generando PDF...")
+        try:
+            cuit_emisor = data.get("cuit_emisor")
+            punto_venta = data.get("punto_venta", 2)
+            cbte_nro = factura["cbte_nro"]
+            
+            # Nombre del PDF
+            pdf_filename = f"{cuit_emisor}_011_{str(punto_venta).zfill(5)}_{str(cbte_nro).zfill(8)}.pdf"
+            pdf_path = os.path.join(PDF_DIR, pdf_filename)
+            
+            # Datos para el PDF
+            datos_pdf = {
+                "cuit_emisor": cuit_emisor,
+                "cuit_receptor": data.get("cuit_receptor"),
+                "punto_venta": punto_venta,
+                "tipo_cbte": data.get("tipo_cbte", 11),
+                "cbte_nro": cbte_nro,
+                "fecha_emision": datetime.datetime.now(),
+                "cae": factura["cae"],
+                "vencimiento_cae": factura["vencimiento"],
+                "importe": data.get("importe"),
+                "descripcion": data.get("descripcion", "")
+            }
+            
+            # Generar PDF
+            crear_pdf_factura(datos_pdf, LOGO_PATH, pdf_path)
+            
+            # URL del PDF
+            pdf_url = f"https://afip-microserver-1.onrender.com/descargar_pdf/{pdf_filename}"
+            factura["pdf_url"] = pdf_url
+            
+            print(f"✓ PDF generado: {pdf_filename}")
+            
+        except Exception as e:
+            print(f"⚠ Error generando PDF (factura OK): {str(e)}")
+            # No fallar la factura si el PDF falla
+        
         return jsonify({"status": "OK", "factura": factura})
     except Exception as e:
         print(f"\n{'='*60}")
@@ -348,6 +395,14 @@ def facturar():
 @app.route("/", methods=["GET"])
 def home():
     return "AFIP Microserver v4 - Funcionando correctamente"
+
+@app.route("/descargar_pdf/<filename>", methods=["GET"])
+def descargar_pdf(filename):
+    """Endpoint para descargar PDFs generados"""
+    try:
+        return send_from_directory(PDF_DIR, filename, as_attachment=True)
+    except Exception as e:
+        return jsonify({"status": "ERROR", "detalle": f"PDF no encontrado: {str(e)}"}), 404
 
 @app.route("/test", methods=["GET"])
 def test():
