@@ -369,7 +369,10 @@ def facturar():
                 "cae": factura["cae"],
                 "vencimiento_cae": factura["vencimiento"],
                 "importe": data.get("importe"),
-                "descripcion": data.get("descripcion", "")
+                "descripcion": data.get("descripcion", ""),
+                "compania": data.get("compania", ""),
+                "domicilio": data.get("domicilio", ""),
+                "condicion_iva": data.get("condicion_iva", "IVA Responsable Inscripto")
             }
             
             # Generar PDF
