@@ -1,19 +1,18 @@
 """
-Generador de PDFs para facturas AFIP
-Genera PDFs con formato oficial incluyendo código de barras
+Generador de PDFs para facturas AFIP con código QR
+Según especificaciones RG 5198/2022
 """
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.pdfgen import canvas
-from reportlab.graphics.barcode import code128
-from reportlab.graphics.shapes import Drawing
-from reportlab.graphics import renderPDF
-import os
+import qrcode
+from io import BytesIO
+import json
+import base64
 from datetime import datetime
 
 # Datos del emisor
@@ -27,17 +26,22 @@ EMISOR_DATA = {
         "inicio_actividades": "01/01/2021"
     },
     "27461124149": {
-        "razon_social": "DEVRIES MARIA PAULA",  # Ajustar si es diferente
-        "domicilio": "Rodriguez Peña 1789 - Mar Del Plata Sur, Buenos Aires",
+        "razon_social": "CACCIATO MARIA MERCEDES",
+        "domicilio": "General Paz 4662 - Mar Del Plata Sur, Buenos Aires",
         "cuit": "27461124149",
         "condicion_iva": "Responsable Monotributo",
         "ingresos_brutos": "27461124149",
-        "inicio_actividades": "01/01/2021"
+        "inicio_actividades": "01/12/2023"
     }
 }
 
 # Mapeo de compañías de seguros
 COMPANIAS = {
+    "20226717871": {
+        "razon_social": "LA SEGUNDA COOPERATIVA LIMITADA DE SEGUROS GENERALES",
+        "domicilio": "Juan Manuel De Rosas 957 - Rosario Norte, Santa Fe",
+        "condicion_iva": "IVA Responsable Inscripto"
+    },
     "30500017704": {
         "razon_social": "LA SEGUNDA COOPERATIVA LTDA DE SEGUROS GENERALES",
         "domicilio": "Juan Manuel De Rosas 957 - Rosario Norte, Santa Fe",
@@ -46,6 +50,11 @@ COMPANIAS = {
     "30546744449": {
         "razon_social": "MERCANTIL ANDINA SEGUROS SA",
         "domicilio": "Av. Corrientes 330 - CABA, Buenos Aires",
+        "condicion_iva": "IVA Responsable Inscripto"
+    },
+    "30500036911": {
+        "razon_social": "COMPAÑIA DE SEGUROS LA MERCANTIL ANDINA S.A.",
+        "domicilio": "Belgrano Av. 672 - Capital Federal, Ciudad de Buenos Aires",
         "condicion_iva": "IVA Responsable Inscripto"
     },
     "30682305009": {
@@ -60,98 +69,81 @@ COMPANIAS = {
     }
 }
 
-def generar_codigo_barras(cuit_emisor, tipo_cbte, punto_venta, cae, vencimiento_cae):
-    """
-    Genera el código de barras según especificaciones AFIP
-    Formato: CUIT (11) + Tipo Cbte (2) + PtoVta (4) + CAE (14) + Vto (8)
-    """
-    # Limpiar CUIT
-    cuit_limpio = cuit_emisor.replace("-", "").replace(" ", "")
+def formatear_vencimiento_cae(vencimiento):
+    """Convierte AAAAMMDD a DD/MM/AAAA"""
+    if isinstance(vencimiento, str) and len(vencimiento) == 8:
+        return f"{vencimiento[6:8]}/{vencimiento[4:6]}/{vencimiento[0:4]}"
+    return vencimiento
+
+def generar_qr_afip(datos_factura):
+    """Genera código QR según especificaciones AFIP"""
+    qr_data = {
+        "ver": 1,
+        "fecha": datos_factura["fecha_emision"].strftime("%Y-%m-%d"),
+        "cuit": int(datos_factura["cuit_emisor"].replace("-", "")),
+        "ptoVta": int(datos_factura["punto_venta"]),
+        "tipoCmp": int(datos_factura["tipo_cbte"]),
+        "nroCmp": int(datos_factura["cbte_nro"]),
+        "importe": float(datos_factura["importe"]),
+        "moneda": "PES",
+        "ctz": 1,
+        "tipoDocRec": 80,
+        "nroDocRec": int(datos_factura["cuit_receptor"].replace("-", "")),
+        "tipoCodAut": "E",
+        "codAut": int(datos_factura["cae"])
+    }
     
-    # Formatear cada componente
-    tipo_cbte_str = str(tipo_cbte).zfill(2)
-    pto_vta_str = str(punto_venta).zfill(4)
-    cae_str = str(cae)
-    vto_str = vencimiento_cae.replace("/", "").replace("-", "")  # AAAAMMDD
+    json_str = json.dumps(qr_data, separators=(',', ':'))
+    base64_data = base64.b64encode(json_str.encode()).decode()
+    qr_url = f"https://www.arca.gob.ar/fe/qr/?p={base64_data}"
     
-    # Construir código
-    codigo = f"{cuit_limpio}{tipo_cbte_str}{pto_vta_str}{cae_str}{vto_str}"
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
+    qr.add_data(qr_url)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white")
     
-    return codigo
+    img_buffer = BytesIO()
+    qr_img.save(img_buffer, format='PNG')
+    img_buffer.seek(0)
+    return img_buffer
 
 def crear_pdf_factura(datos_factura, logo_path, output_path):
-    """
-    Crea un PDF de factura con formato AFIP oficial
+    """Crea un PDF de factura con formato AFIP oficial"""
     
-    Parámetros:
-    - datos_factura: dict con todos los datos de la factura
-    - logo_path: ruta al archivo del logo
-    - output_path: ruta donde guardar el PDF
-    """
-    
-    # Extraer datos
     cuit_emisor = str(datos_factura["cuit_emisor"]).replace("-", "").replace(" ", "")
     cuit_receptor = str(datos_factura["cuit_receptor"]).replace("-", "").replace(" ", "")
-    punto_venta = datos_factura["punto_venta"]
-    tipo_cbte = datos_factura["tipo_cbte"]
-    cbte_nro = datos_factura["cbte_nro"]
     fecha_emision = datos_factura["fecha_emision"]
-    cae = datos_factura["cae"]
-    vencimiento_cae = datos_factura["vencimiento_cae"]
-    importe = datos_factura["importe"]
-    descripcion = datos_factura.get("descripcion", "")
+    vencimiento_cae = formatear_vencimiento_cae(str(datos_factura["vencimiento_cae"]))
     
     # Obtener datos del emisor
     emisor = EMISOR_DATA.get(cuit_emisor, EMISOR_DATA["27239676931"])
     
-    # Obtener datos del receptor
-    receptor = COMPANIAS.get(cuit_receptor, {
-        "razon_social": "Cliente",
-        "domicilio": "",
-        "condicion_iva": "IVA Responsable Inscripto"
-    })
+    # Obtener datos del receptor - PRIMERO de datos_factura, sino del mapeo
+    if datos_factura.get("compania") and datos_factura.get("domicilio"):
+        receptor = {
+            "razon_social": datos_factura.get("compania", "Cliente"),
+            "domicilio": datos_factura.get("domicilio", ""),
+            "condicion_iva": datos_factura.get("condicion_iva", "IVA Responsable Inscripto")
+        }
+    else:
+        # Fallback al mapeo hardcodeado
+        receptor = COMPANIAS.get(cuit_receptor, {
+            "razon_social": "Cliente",
+            "domicilio": "",
+            "condicion_iva": "IVA Responsable Inscripto"
+        })
     
-    # Crear documento
-    doc = SimpleDocTemplate(
-        output_path,
-        pagesize=A4,
-        rightMargin=20*mm,
-        leftMargin=20*mm,
-        topMargin=15*mm,
-        bottomMargin=15*mm
-    )
+    qr_buffer = generar_qr_afip(datos_factura)
     
-    # Estilos
+    doc = SimpleDocTemplate(output_path, pagesize=A4, rightMargin=20*mm, leftMargin=20*mm, topMargin=15*mm, bottomMargin=15*mm)
+    
     styles = getSampleStyleSheet()
-    style_normal = ParagraphStyle(
-        'Normal',
-        parent=styles['Normal'],
-        fontSize=8,
-        leading=10
-    )
-    style_bold = ParagraphStyle(
-        'Bold',
-        parent=styles['Normal'],
-        fontSize=8,
-        fontName='Helvetica-Bold',
-        leading=10
-    )
-    style_titulo = ParagraphStyle(
-        'Titulo',
-        parent=styles['Normal'],
-        fontSize=10,
-        fontName='Helvetica-Bold',
-        alignment=TA_CENTER
-    )
+    style_normal = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=8, leading=10)
     
-    # Contenido
     story = []
     
-    # === ENCABEZADO "ORIGINAL" ===
-    encabezado_table = Table(
-        [["ORIGINAL"]],
-        colWidths=[170*mm]
-    )
+    # ENCABEZADO ORIGINAL
+    encabezado_table = Table([["ORIGINAL"]], colWidths=[170*mm])
     encabezado_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
@@ -163,225 +155,133 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     story.append(encabezado_table)
     story.append(Spacer(1, 3*mm))
     
-    # === BLOQUE SUPERIOR: Emisor + Tipo + Factura ===
+    # BLOQUE PRINCIPAL CON LOGO
+    try:
+        logo = RLImage(logo_path, width=25*mm, height=25*mm)
+    except:
+        logo = Paragraph("<b>LOGO</b>", style_normal)
     
-    # Columna izquierda: Logo y datos del emisor
-    if os.path.exists(logo_path):
-        logo = Image(logo_path, width=25*mm, height=25*mm)
-    else:
-        logo = Paragraph("", style_normal)
+    main_table = Table([
+        [logo,
+         Paragraph("<para align=center><b><font size=24>C</font></b><br/><font size=8>COD. 011</font></para>", style_normal),
+         Paragraph(f"<b>FACTURA</b><br/><br/>"
+                  f"Punto de Venta: {str(datos_factura['punto_venta']).zfill(5)}  "
+                  f"Comp. Nro: {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
+                  f"Fecha de Emisión: {fecha_emision.strftime('%d/%m/%Y')}<br/>"
+                  f"CUIT: {cuit_emisor}<br/>"
+                  f"Ingresos Brutos: {emisor['ingresos_brutos']}<br/>"
+                  f"Fecha de Inicio de Actividades: {emisor['inicio_actividades']}", style_normal)]
+    ], colWidths=[30*mm, 25*mm, 115*mm])
     
-    datos_emisor = [
-        [Paragraph(f"<b>{emisor['razon_social']}</b>", style_bold)],
-        [Paragraph(f"<b>Razón Social:</b> {emisor['razon_social']}", style_normal)],
-        [Paragraph(f"<b>Domicilio Comercial:</b> {emisor['domicilio']}", style_normal)],
-        [Paragraph(f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}", style_normal)]
-    ]
-    
-    table_emisor = Table(datos_emisor, colWidths=[80*mm])
-    table_emisor.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-    ]))
-    
-    # Columna centro: Tipo de comprobante (C)
-    tipo_c = Table(
-        [[Paragraph("<b>C</b>", style_titulo)], [Paragraph("COD. 011", style_normal)]],
-        colWidths=[20*mm],
-        rowHeights=[15*mm, 5*mm]
-    )
-    tipo_c.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
-        ('BOX', (0, 0), (-1, -1), 2, colors.black),
-        ('FONTSIZE', (0, 0), (0, 0), 24),
-        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-    ]))
-    
-    # Columna derecha: Datos de la factura
-    punto_venta_str = str(punto_venta).zfill(5)
-    cbte_nro_str = str(cbte_nro).zfill(8)
-    
-    datos_factura_derecha = [
-        [Paragraph("<b>FACTURA</b>", style_titulo)],
-        [Paragraph(f"<b>Punto de Venta:</b> {punto_venta_str}  <b>Comp. Nro:</b> {cbte_nro_str}", style_normal)],
-        [Paragraph(f"<b>Fecha de Emisión:</b> {fecha_emision}", style_normal)],
-        [Paragraph(f"<b>CUIT:</b> {cuit_emisor}", style_normal)],
-        [Paragraph(f"<b>Ingresos Brutos:</b> {emisor['ingresos_brutos']}", style_normal)],
-        [Paragraph(f"<b>Fecha de Inicio de Actividades:</b> {emisor['inicio_actividades']}", style_normal)]
-    ]
-    
-    table_factura = Table(datos_factura_derecha, colWidths=[65*mm])
-    table_factura.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-    ]))
-    
-    # Combinar las tres columnas
-    bloque_superior = Table(
-        [[logo, "", tipo_c, "", table_factura]],
-        colWidths=[25*mm, 3*mm, 20*mm, 3*mm, 119*mm]
-    )
-    bloque_superior.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-        ('ALIGN', (2, 0), (2, 0), 'CENTER'),
-        ('ALIGN', (4, 0), (4, 0), 'LEFT'),
+    main_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('ALIGN', (2, 0), (2, 0), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('BOX', (1, 0), (1, 0), 2, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
     ]))
     
-    story.append(bloque_superior)
+    # Emisor en segunda fila
+    emisor_text = Paragraph(f"<b>{emisor['razon_social']}</b><br/><br/>"
+                           f"Razón Social: {emisor['razon_social']}<br/>"
+                           f"Domicilio Comercial: {emisor['domicilio']}<br/>"
+                           f"Condición frente al IVA: {emisor['condicion_iva']}", style_normal)
+    
+    combined_table = Table([
+        [main_table],
+        [emisor_text]
+    ], colWidths=[170*mm])
+    
+    combined_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('TOPPADDING', (0, 1), (0, 1), 8),
+        ('BOTTOMPADDING', (0, 1), (0, 1), 8),
+        ('LEFTPADDING', (0, 1), (0, 1), 8),
+    ]))
+    
+    story.append(combined_table)
     story.append(Spacer(1, 2*mm))
     
-    # === PERÍODO FACTURADO ===
-    periodo_data = [[
-        Paragraph(f"<b>Período Facturado Desde:</b> {fecha_emision}", style_normal),
-        Paragraph(f"<b>Hasta:</b> {fecha_emision}", style_normal),
-        Paragraph(f"<b>Fecha de Vto. para el pago:</b> {fecha_emision}", style_normal)
-    ]]
-    
-    periodo_table = Table(periodo_data, colWidths=[57*mm, 57*mm, 56*mm])
+    # PERÍODO
+    fecha_str = fecha_emision.strftime("%d/%m/%Y")
+    periodo_table = Table([[Paragraph(f"Período Facturado Desde: {fecha_str}  Hasta: {fecha_str}  "
+                                     f"Fecha de Vto. para el pago: {fecha_str}", style_normal)]], colWidths=[170*mm])
     periodo_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
         ('TOPPADDING', (0, 0), (-1, -1), 5),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
     ]))
-    
     story.append(periodo_table)
     story.append(Spacer(1, 2*mm))
     
-    # === DATOS DEL RECEPTOR ===
-    receptor_data = [
-        [
-            Paragraph(f"<b>CUIT:</b> {cuit_receptor}", style_normal),
-            Paragraph(f"<b>Apellido y Nombre / Razón Social:</b> {receptor['razon_social']}", style_normal)
-        ],
-        [
-            Paragraph(f"<b>Condición frente al IVA:</b> {receptor['condicion_iva']}", style_normal),
-            Paragraph(f"<b>Domicilio:</b> {receptor['domicilio']}", style_normal)
-        ],
-        [
-            Paragraph(f"<b>Condición de venta:</b> Otra", style_normal),
-            Paragraph("", style_normal)
-        ]
-    ]
-    
-    receptor_table = Table(receptor_data, colWidths=[85*mm, 85*mm])
+    # RECEPTOR
+    receptor_table = Table([[Paragraph(f"CUIT: {cuit_receptor}<br/>"
+                                      f"Apellido y Nombre / Razón Social: {receptor['razon_social']}<br/>"
+                                      f"Condición frente al IVA: {receptor['condicion_iva']}<br/>"
+                                      f"Domicilio: {receptor['domicilio']}<br/>"
+                                      f"Condición de venta: Otra", style_normal)]], colWidths=[170*mm])
     receptor_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
     ]))
-    
     story.append(receptor_table)
     story.append(Spacer(1, 5*mm))
     
-    # === DETALLE DEL COMPROBANTE ===
-    detalle_headers = [
-        Paragraph("<b>Código</b>", style_bold),
-        Paragraph("<b>Producto / Servicio</b>", style_bold),
-        Paragraph("<b>Cantidad</b>", style_bold),
-        Paragraph("<b>U. Medida</b>", style_bold),
-        Paragraph("<b>Precio Unit.</b>", style_bold),
-        Paragraph("<b>% Bonif</b>", style_bold),
-        Paragraph("<b>Imp. Bonif.</b>", style_bold),
-        Paragraph("<b>Subtotal</b>", style_bold)
-    ]
+    # DETALLE
+    importe = float(datos_factura["importe"])
+    detalle_table = Table([
+        [Paragraph("<b>Código</b>", style_normal), Paragraph("<b>Producto / Servicio</b>", style_normal),
+         Paragraph("<b>Cantidad</b>", style_normal), Paragraph("<b>U. Medida</b>", style_normal),
+         Paragraph("<b>Precio Unit.</b>", style_normal), Paragraph("<b>% Bonif</b>", style_normal),
+         Paragraph("<b>Imp. Bonif.</b>", style_normal), Paragraph("<b>Subtotal</b>", style_normal)],
+        ["", Paragraph(datos_factura.get("descripcion", ""), style_normal), "1,00", "unidades",
+         f"{importe:,.2f}", "0,00", "0,00", f"{importe:,.2f}"]
+    ], colWidths=[15*mm, 60*mm, 15*mm, 18*mm, 20*mm, 13*mm, 18*mm, 21*mm])
     
-    detalle_row = [
-        Paragraph("", style_normal),
-        Paragraph(descripcion, style_normal),
-        Paragraph("1,00", style_normal),
-        Paragraph("unidades", style_normal),
-        Paragraph(f"{importe:,.2f}", style_normal),
-        Paragraph("0,00", style_normal),
-        Paragraph("0,00", style_normal),
-        Paragraph(f"{importe:,.2f}", style_normal)
-    ]
-    
-    detalle_table = Table(
-        [detalle_headers, detalle_row],
-        colWidths=[15*mm, 60*mm, 15*mm, 18*mm, 20*mm, 13*mm, 18*mm, 21*mm]
-    )
     detalle_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (1, 0), (1, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 7),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
     ]))
-    
     story.append(detalle_table)
     story.append(Spacer(1, 50*mm))
     
-    # === TOTALES ===
-    totales_data = [
+    # TOTALES
+    totales_table = Table([
         ["", "Subtotal: $", f"{importe:,.2f}"],
         ["", "Importe Otros Tributos: $", "0,00"],
         ["", "Importe Total: $", f"{importe:,.2f}"]
-    ]
-    
-    totales_table = Table(totales_data, colWidths=[95*mm, 40*mm, 35*mm])
+    ], colWidths=[95*mm, 40*mm, 35*mm])
     totales_table.setStyle(TableStyle([
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
         ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
         ('FONTNAME', (1, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
     ]))
-    
     story.append(totales_table)
     story.append(Spacer(1, 10*mm))
     
-    # === CAE Y CÓDIGO DE BARRAS ===
-    codigo_barras_str = generar_codigo_barras(
-        cuit_emisor, tipo_cbte, punto_venta, cae, vencimiento_cae
-    )
-    
-    # Crear código de barras
-    barcode = code128.Code128(codigo_barras_str, barHeight=15*mm, barWidth=0.8)
-    
-    # Datos CAE
-    cae_data = [
-        [
-            "",
-            Paragraph(f"<b>CAE N°:</b> {cae}", style_bold),
-            Paragraph(f"<b>Fecha de Vto. de CAE:</b> {vencimiento_cae}", style_bold)
-        ],
-        [
-            barcode,
-            Paragraph("<b>Comprobante Autorizado</b>", style_bold),
-            Paragraph("Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación", 
-                     ParagraphStyle('Small', parent=styles['Normal'], fontSize=6))
-        ]
-    ]
-    
-    cae_table = Table(cae_data, colWidths=[60*mm, 60*mm, 50*mm], rowHeights=[8*mm, 20*mm])
-    cae_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-        ('ALIGN', (1, 0), (2, 0), 'LEFT'),
-        ('ALIGN', (1, 1), (1, 1), 'CENTER'),
-        ('ALIGN', (2, 1), (2, 1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('SPAN', (0, 0), (0, 1)),
-    ]))
-    
+    # CAE Y QR
+    qr_image = RLImage(qr_buffer, width=40*mm, height=40*mm)
+    cae_table = Table([
+        [qr_image,
+         Paragraph(f"<para align=right>Pág. 1/1<br/><br/>"
+                  f"<b>CAE N°: {datos_factura['cae']}</b><br/>"
+                  f"<b>Fecha de Vto. de CAE: {vencimiento_cae}</b><br/><br/>"
+                  f"<b>Comprobante Autorizado</b><br/>"
+                  f"<font size=6>Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación</font></para>",
+                  style_normal)]
+    ], colWidths=[50*mm, 120*mm])
     story.append(cae_table)
     
-    # Generar PDF
     doc.build(story)
-    
     print(f"PDF generado exitosamente: {output_path}")
     return output_path
