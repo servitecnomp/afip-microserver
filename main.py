@@ -189,17 +189,18 @@ def get_token_sign(cert_file, key_file):
 # ----------------------------------------------------------------------
 
 def crear_factura(data):
-    # Limpiar CUITs de guiones y espacios
-    cuit_emisor   = str(data["cuit_emisor"]).replace("-", "").replace(" ", "").strip()
-    cuit_receptor = str(data["cuit_receptor"]).replace("-", "").replace(" ", "").strip()
-    punto_venta   = int(data["punto_venta"])
-    tipo_cbte     = int(data["tipo_cbte"])
-    importe       = float(data["importe"])
+    # Limpiar CUITs/DNI de guiones y espacios
+    cuit_emisor = str(data["cuit_emisor"]).replace("-", "").replace(" ", "").strip()
+    doc_receptor = str(data.get("doc_receptor") or data.get("cuit_receptor", "")).replace("-", "").replace(" ", "").strip()
+    tipo_doc_receptor = int(data.get("tipo_doc_receptor", 80))  # 80=CUIT, 96=DNI
+    punto_venta = int(data["punto_venta"])
+    tipo_cbte = int(data["tipo_cbte"])
+    importe = float(data["importe"])
     
     # Log para debugging
     print(f"\n=== INICIANDO FACTURACIÓN ===")
     print(f"CUIT Emisor: {cuit_emisor}")
-    print(f"CUIT Receptor: {cuit_receptor}")
+    print(f"Doc Receptor: {doc_receptor} (Tipo: {tipo_doc_receptor})")
     print(f"Punto Venta: {punto_venta}")
     print(f"Tipo Comprobante: {tipo_cbte}")
     print(f"Importe: {importe}")
@@ -250,8 +251,8 @@ def crear_factura(data):
     
     FeDetReq = {
         'Concepto': 1,
-        'DocTipo': 80,
-        'DocNro': int(cuit_receptor),
+        'DocTipo': tipo_doc_receptor,  # 80=CUIT, 96=DNI
+        'DocNro': int(doc_receptor),
         'CbteDesde': cbte_nro,
         'CbteHasta': cbte_nro,
         'CbteFch': fecha,
@@ -361,7 +362,7 @@ def facturar():
             # Datos para el PDF
             datos_pdf = {
                 "cuit_emisor": cuit_emisor,
-                "cuit_receptor": data.get("cuit_receptor"),
+                "cuit_receptor": doc_receptor,  # Puede ser DNI o CUIT
                 "punto_venta": punto_venta,
                 "tipo_cbte": data.get("tipo_cbte", 11),
                 "cbte_nro": cbte_nro,
