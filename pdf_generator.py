@@ -119,7 +119,8 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     emisor = EMISOR_DATA.get(cuit_emisor, EMISOR_DATA["27239676931"])
     
     # Obtener datos del receptor - PRIMERO de datos_factura, sino del mapeo
-    if datos_factura.get("compania") and datos_factura.get("domicilio"):
+    if datos_factura.get("compania"):
+        # Si hay compañía en datos_factura, usarla (domicilio puede estar vacío)
         receptor = {
             "razon_social": datos_factura.get("compania", "Cliente"),
             "domicilio": datos_factura.get("domicilio", ""),
