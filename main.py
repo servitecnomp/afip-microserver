@@ -274,7 +274,7 @@ def crear_factura(data):
     print(f"Comprobante preparado:")
     print(f"  - Fecha: {fecha}")
     print(f"  - Número: {cbte_nro}")
-    print(f"  - Doc Receptor: {int(cuit_receptor)}")
+    print(f"  - Doc Receptor: {int(doc_receptor)}")
     print(f"  - Importe Total: {round(importe, 2)}")
 
     # 5) Solicitar CAE
