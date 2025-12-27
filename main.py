@@ -362,7 +362,7 @@ def facturar():
             # Datos para el PDF
             datos_pdf = {
                 "cuit_emisor": cuit_emisor,
-                "cuit_receptor": doc_receptor,  # Puede ser DNI o CUIT
+                "cuit_receptor": data.get("doc_receptor") or data.get("cuit_receptor", ""),
                 "punto_venta": punto_venta,
                 "tipo_cbte": data.get("tipo_cbte", 11),
                 "cbte_nro": cbte_nro,
