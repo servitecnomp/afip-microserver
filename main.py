@@ -350,6 +350,10 @@ def facturar():
         
         # Generar PDF automáticamente
         print("Generando PDF...")
+        print(f"DEBUG - Datos recibidos:")
+        print(f"  compania: {data.get('compania', '')}")
+        print(f"  domicilio: {data.get('domicilio', '')}")
+        print(f"  condicion_iva: {data.get('condicion_iva', '')}")
         try:
             cuit_emisor = data.get("cuit_emisor")
             punto_venta = data.get("punto_venta", 2)
