@@ -268,6 +268,15 @@ def crear_factura(data):
     print("4. Preparando comprobante...")
     fecha = int(datetime.datetime.now().strftime("%Y%m%d"))
     
+    # Determinar condición IVA del receptor
+    if 'condicion_iva_receptor' in data and data['condicion_iva_receptor']:
+        condicion_iva_receptor = int(data['condicion_iva_receptor'])
+    else:
+        # Por defecto: DNI = Consumidor Final (5), CUIT = Responsable Inscripto (1)
+        condicion_iva_receptor = 5 if tipo_doc_receptor == 96 else 1
+    
+    print(f"Condición IVA Receptor: {condicion_iva_receptor}")
+    
     FeCabReq = {
         'CantReg': 1,
         'PtoVta': punto_venta,
@@ -288,7 +297,8 @@ def crear_factura(data):
         'ImpIVA': 0.00,
         'ImpTrib': 0.00,
         'MonId': 'PES',
-        'MonCotiz': 1.00
+        'MonCotiz': 1.00,
+        'CondicionIVA': condicion_iva_receptor  # Campo obligatorio para AFIP
     }
     
     FeCAEReq = {
@@ -301,6 +311,7 @@ def crear_factura(data):
     print(f"  - Número: {cbte_nro}")
     print(f"  - Doc Receptor: {int(doc_receptor)}")
     print(f"  - Importe Total: {round(importe, 2)}")
+    print(f"  - Condición IVA: {condicion_iva_receptor}")
 
     # 5) Solicitar CAE
     print("5. Solicitando CAE a AFIP...")
