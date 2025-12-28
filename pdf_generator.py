@@ -36,6 +36,12 @@ def crear_pdf_factura(datos, logo_path, output_path):
     letra_x = width / 2 - 10*mm
     letra_y = height - 28*mm
     
+    # LÍNEA VERTICAL DIVISORIA (pasa por el medio del cuadrado de la C)
+    linea_vertical_x = width / 2
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(1.5)
+    c.line(linea_vertical_x, height - 10*mm, linea_vertical_x, height - 75*mm)
+    
     # Cuadro para la letra C (más pequeño)
     c.setStrokeColor(colors.black)
     c.setLineWidth(1.5)
@@ -57,11 +63,12 @@ def crear_pdf_factura(datos, logo_path, output_path):
     c.drawCentredString(width / 2, height - 8*mm, "ORIGINAL")
     
     # ================================================================
-    # DATOS DEL EMISOR (Izquierda)
+    # DATOS DEL EMISOR (Izquierda de la línea vertical)
     # ================================================================
     
     emisor_x = margin
     emisor_y = height - 48*mm
+    max_ancho_izq = (width / 2) - margin - 5*mm  # Limitar al ancho de la mitad izquierda
     
     # Determinar datos del emisor
     emisor_data = {
@@ -95,10 +102,10 @@ def crear_pdf_factura(datos, logo_path, output_path):
     c.drawString(emisor_x, emisor_y, f"Condición frente al IVA: {emisor['condicion_iva']}")
     
     # ================================================================
-    # DATOS FISCALES DEL EMISOR (Derecha)
+    # DATOS FISCALES DEL EMISOR (Derecha de la línea vertical)
     # ================================================================
     
-    fiscal_x = width - margin - 70*mm
+    fiscal_x = width / 2 + 5*mm  # Justo después de la línea vertical
     fiscal_y = height - 48*mm
     
     punto_venta = str(datos.get("punto_venta", 2)).zfill(5)
