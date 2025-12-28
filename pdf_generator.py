@@ -43,7 +43,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     c.setStrokeColor(colors.black)
     c.setLineWidth(1.5)
     # Línea superior (hasta arriba del cuadrado)
-    c.line(linea_vertical_x, height - 10*mm, linea_vertical_x, letra_y + 20*mm + 2*mm)
+    c.line(linea_vertical_x, height - 8*mm, linea_vertical_x, letra_y + 20*mm + 2*mm)
     # Línea inferior (desde abajo del cuadrado hasta el separador)
     c.line(linea_vertical_x, letra_y - 2*mm, linea_vertical_x, height - 79*mm)
     
@@ -63,9 +63,9 @@ def crear_pdf_factura(datos, logo_path, output_path):
     c.setFont("Helvetica-Bold", 12)
     c.drawCentredString(letra_x + 10*mm, letra_y + 22*mm, "FACTURA")
     
-    # ORIGINAL en la parte superior
+    # ORIGINAL en la parte superior (subido para evitar superposición)
     c.setFont("Helvetica-Bold", 10)
-    c.drawCentredString(width / 2, height - 8*mm, "ORIGINAL")
+    c.drawCentredString(width / 2, height - 5*mm, "ORIGINAL")
     
     # ================================================================
     # DATOS DEL EMISOR (Izquierda de la línea vertical)
