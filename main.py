@@ -22,6 +22,42 @@ os.makedirs(PDF_DIR, exist_ok=True)
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.jpeg")
 
 # ======================================================================
+# CACHE DE TOKENS PARA REUTILIZACIÓN
+# ======================================================================
+# Diccionario para guardar tokens por CUIT: {cuit: {'token': ..., 'sign': ..., 'expiracion': ...}}
+TOKEN_CACHE = {}
+
+def get_cached_token(cuit_emisor, cert_file, key_file):
+    """
+    Obtiene un token de AFIP, reutilizando el caché si existe y no ha expirado
+    """
+    import datetime
+    
+    # Verificar si tenemos un token en caché
+    if cuit_emisor in TOKEN_CACHE:
+        cache_entry = TOKEN_CACHE[cuit_emisor]
+        expiracion = cache_entry.get('expiracion')
+        
+        # Si el token todavía es válido (con margen de 30 minutos)
+        if expiracion and datetime.datetime.now() < (expiracion - datetime.timedelta(minutes=30)):
+            print(f"✓ Usando token en caché (válido hasta {expiracion.strftime('%H:%M:%S')})")
+            return cache_entry['token'], cache_entry['sign']
+    
+    # Si no hay token en caché o expiró, generar uno nuevo
+    print("Generando nuevo token de AFIP...")
+    token, sign = get_token_sign(cert_file, key_file)
+    
+    # Guardar en caché (tokens de AFIP duran 12 horas)
+    TOKEN_CACHE[cuit_emisor] = {
+        'token': token,
+        'sign': sign,
+        'expiracion': datetime.datetime.now() + datetime.timedelta(hours=12)
+    }
+    
+    print(f"✓ Nuevo token generado y guardado en caché")
+    return token, sign
+
+# ======================================================================
 # MODO: TESTING o PRODUCCION
 # ======================================================================
 # Cambiar a "PRODUCCION" cuando quieras facturar en serio
@@ -233,9 +269,9 @@ def crear_factura(data):
     cert_file, key_file = load_cert(cuit_emisor)
     print(f"Certificado: {cert_file}")
 
-    # 1) Token AFIP
+    # 1) Token AFIP (usar caché para reutilizar tokens)
     print("\n1. Obteniendo token AFIP...")
-    token, sign = get_token_sign(cert_file, key_file)
+    token, sign = get_cached_token(cuit_emisor, cert_file, key_file)
 
     # 2) Cliente WSFE con headers y SSL configurado
     print("2. Conectando a WSFE...")
@@ -477,7 +513,18 @@ def test():
         "endpoints": {
             "WSAA": WSAA,
             "WSFE": WSFE
-        }
+        },
+        "tokens_en_cache": len(TOKEN_CACHE)
+    })
+
+@app.route("/limpiar_cache", methods=["POST"])
+def limpiar_cache():
+    """Endpoint para limpiar el caché de tokens manualmente"""
+    global TOKEN_CACHE
+    TOKEN_CACHE = {}
+    return jsonify({
+        "status": "OK",
+        "message": "Caché de tokens limpiado"
     })
 
 if __name__ == "__main__":
