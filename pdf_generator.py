@@ -24,44 +24,44 @@ def crear_pdf_factura(datos, logo_path, output_path):
     # ENCABEZADO
     # ================================================================
     
-    # Logo (arriba izquierda)
+    # Logo (arriba izquierda - más pequeño)
     if os.path.exists(logo_path):
         try:
-            c.drawImage(logo_path, margin, height - 50*mm, width=40*mm, height=40*mm, preserveAspectRatio=True, mask='auto')
+            c.drawImage(logo_path, margin, height - 40*mm, width=30*mm, height=30*mm, preserveAspectRatio=True, mask='auto')
         except:
             pass
     
-    # Letra "C" grande en el centro
-    c.setFont("Helvetica-Bold", 60)
-    letra_x = width / 2 - 15*mm
-    letra_y = height - 35*mm
+    # Letra "C" en el centro (más pequeña)
+    c.setFont("Helvetica-Bold", 40)
+    letra_x = width / 2 - 10*mm
+    letra_y = height - 28*mm
     
-    # Cuadro para la letra C
+    # Cuadro para la letra C (más pequeño)
     c.setStrokeColor(colors.black)
-    c.setLineWidth(2)
-    c.rect(letra_x, letra_y, 30*mm, 30*mm)
+    c.setLineWidth(1.5)
+    c.rect(letra_x, letra_y, 20*mm, 20*mm)
     
     # Letra C
-    c.drawCentredString(letra_x + 15*mm, letra_y + 8*mm, "C")
+    c.drawCentredString(letra_x + 10*mm, letra_y + 5*mm, "C")
     
     # COD. 011 debajo de la letra
-    c.setFont("Helvetica", 10)
-    c.drawCentredString(letra_x + 15*mm, letra_y + 3*mm, "COD. 011")
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(letra_x + 10*mm, letra_y + 2*mm, "COD. 011")
     
     # FACTURA arriba de la letra
-    c.setFont("Helvetica-Bold", 16)
-    c.drawCentredString(letra_x + 15*mm, letra_y + 32*mm, "FACTURA")
+    c.setFont("Helvetica-Bold", 12)
+    c.drawCentredString(letra_x + 10*mm, letra_y + 22*mm, "FACTURA")
     
     # ORIGINAL en la parte superior
-    c.setFont("Helvetica-Bold", 12)
-    c.drawCentredString(width / 2, height - 10*mm, "ORIGINAL")
+    c.setFont("Helvetica-Bold", 10)
+    c.drawCentredString(width / 2, height - 8*mm, "ORIGINAL")
     
     # ================================================================
     # DATOS DEL EMISOR (Izquierda)
     # ================================================================
     
     emisor_x = margin
-    emisor_y = height - 55*mm
+    emisor_y = height - 48*mm
     
     # Determinar datos del emisor
     emisor_data = {
@@ -99,7 +99,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     # ================================================================
     
     fiscal_x = width - margin - 70*mm
-    fiscal_y = height - 55*mm
+    fiscal_y = height - 48*mm
     
     punto_venta = str(datos.get("punto_venta", 2)).zfill(5)
     cbte_nro = str(datos.get("cbte_nro", 1)).zfill(8)
@@ -123,7 +123,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     c.drawString(fiscal_x, fiscal_y, f"Fecha de Inicio de Actividades: {emisor['inicio_actividades']}")
     
     # Línea separadora
-    separador_y = height - 85*mm
+    separador_y = height - 75*mm
     c.setStrokeColor(colors.black)
     c.setLineWidth(0.5)
     c.line(margin, separador_y, width - margin, separador_y)
