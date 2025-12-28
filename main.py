@@ -21,6 +21,13 @@ os.makedirs(PDF_DIR, exist_ok=True)
 # Logo path
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.jpeg")
 
+# ======================================================================
+# MODO: TESTING o PRODUCCION
+# ======================================================================
+# Cambiar a "PRODUCCION" cuando quieras facturar en serio
+MODO = "TESTING"  # ← CAMBIAR AQUÍ ENTRE "TESTING" Y "PRODUCCION"
+# ======================================================================
+
 # Configuración SSL para permitir conexión a AFIP
 class DESAdapter(HTTPAdapter):
     """
@@ -39,17 +46,41 @@ class DESAdapter(HTTPAdapter):
         return super(DESAdapter, self).proxy_manager_for(*args, **kwargs)
 
 # ----------------------------------------------------------------------
-# CONFIGURACIÓN CUITS Y CERTIFICADOS
+# CONFIGURACIÓN SEGÚN MODO
 # ----------------------------------------------------------------------
 
 CUIT_1 = "27239676931"
 CUIT_2 = "27461124149"
 
-CERT_1 = "facturacion27239676931.crt"
-KEY_1  = "cuit_27239676931.key"
-
-CERT_2 = "facturacion27461124149.crt"
-KEY_2  = "cuit_27461124149.key"
+if MODO == "TESTING":
+    print("=" * 60)
+    print("⚠️  MODO TESTING ACTIVADO - FACTURAS NO SON REALES")
+    print("=" * 60)
+    
+    # Certificados de homologación
+    CERT_1 = "homologacion_27239676931.crt"
+    KEY_1  = "homologacion_27239676931.key"
+    CERT_2 = "facturacion27461124149.crt"
+    KEY_2  = "cuit_27461124149.key"
+    
+    # URLs de homologación
+    WSAA = "https://wsaahomo.afip.gov.ar/ws/services/LoginCms?wsdl"
+    WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
+    
+else:  # PRODUCCION
+    print("=" * 60)
+    print("✅ MODO PRODUCCIÓN - FACTURAS REALES")
+    print("=" * 60)
+    
+    # Certificados de producción
+    CERT_1 = "facturacion27239676931.crt"
+    KEY_1  = "cuit_27239676931.key"
+    CERT_2 = "facturacion27461124149.crt"
+    KEY_2  = "cuit_27461124149.key"
+    
+    # URLs de producción
+    WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
+    WSFE = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
 # Datos de los emisores
 EMISOR_DATA = {
@@ -66,13 +97,6 @@ EMISOR_DATA = {
         "inicio_actividades": "01/12/2023"
     }
 }
-
-# ----------------------------------------------------------------------
-# AFIP ENDPOINTS
-# ----------------------------------------------------------------------
-
-WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
-WSFE = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
 # ----------------------------------------------------------------------
 # UTILIDADES
@@ -199,6 +223,7 @@ def crear_factura(data):
     
     # Log para debugging
     print(f"\n=== INICIANDO FACTURACIÓN ===")
+    print(f"MODO: {MODO}")
     print(f"CUIT Emisor: {cuit_emisor}")
     print(f"Doc Receptor: {doc_receptor} (Tipo: {tipo_doc_receptor})")
     print(f"Punto Venta: {punto_venta}")
@@ -402,7 +427,7 @@ def facturar():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "AFIP Microserver v4 - Funcionando correctamente"
+    return f"AFIP Microserver v5 - Modo: {MODO}"
 
 @app.route("/descargar_pdf/<filename>", methods=["GET"])
 def descargar_pdf(filename):
@@ -417,6 +442,7 @@ def test():
     """Endpoint de prueba para verificar configuración"""
     return jsonify({
         "status": "OK",
+        "modo": MODO,
         "message": "Servidor funcionando correctamente",
         "cuits_configurados": [CUIT_1, CUIT_2],
         "certificados": {
