@@ -298,7 +298,7 @@ def crear_factura(data):
         'ImpTrib': 0.00,
         'MonId': 'PES',
         'MonCotiz': 1.00,
-        'CondicionIVA': condicion_iva_receptor  # Campo obligatorio para AFIP
+        'CondicionIVAReceptorId': condicion_iva_receptor  # Campo obligatorio para AFIP
     }
     
     FeCAEReq = {
