@@ -390,13 +390,26 @@ def facturar():
         print(f"  compania: {data.get('compania', '')}")
         print(f"  domicilio: {data.get('domicilio', '')}")
         print(f"  condicion_iva: {data.get('condicion_iva', '')}")
+        print(f"  nombre_asegurado: {data.get('nombre_asegurado', '')}")
         try:
             cuit_emisor = data.get("cuit_emisor")
             punto_venta = data.get("punto_venta", 2)
             cbte_nro = factura["cbte_nro"]
             
-            # Nombre del PDF
-            pdf_filename = f"{cuit_emisor}_011_{str(punto_venta).zfill(5)}_{str(cbte_nro).zfill(8)}.pdf"
+            # Nombre del asegurado para el archivo (sin espacios ni caracteres especiales)
+            nombre_asegurado = data.get("nombre_asegurado", "")
+            nombre_archivo = ""
+            if nombre_asegurado:
+                # Limpiar nombre: quitar espacios, tildes, caracteres especiales
+                import unicodedata
+                nombre_limpio = ''.join(c for c in unicodedata.normalize('NFD', nombre_asegurado) 
+                                       if unicodedata.category(c) != 'Mn')
+                nombre_limpio = ''.join(c if c.isalnum() else '' for c in nombre_limpio)
+                nombre_archivo = f"_{nombre_limpio[:30]}"  # Máximo 30 caracteres
+            
+            # Formato: CUIT_011_PV_NUM_Nombre.pdf
+            # Ejemplo: 27239676931_011_2_7_SusanaGiachino.pdf
+            pdf_filename = f"{cuit_emisor}_011_{punto_venta}_{cbte_nro}{nombre_archivo}.pdf"
             pdf_path = os.path.join(PDF_DIR, pdf_filename)
             
             # Datos para el PDF
@@ -413,7 +426,8 @@ def facturar():
                 "descripcion": data.get("descripcion", ""),
                 "compania": data.get("compania", ""),
                 "domicilio": data.get("domicilio", ""),
-                "condicion_iva": data.get("condicion_iva", "IVA Responsable Inscripto")
+                "condicion_iva": data.get("condicion_iva", "IVA Responsable Inscripto"),
+                "nombre_asegurado": nombre_asegurado
             }
             
             # Generar PDF
