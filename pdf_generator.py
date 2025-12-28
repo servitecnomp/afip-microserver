@@ -60,7 +60,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     c.drawCentredString(letra_x + 10*mm, letra_y + 2*mm, "COD. 011")
     
     # FACTURA arriba de la letra
-    c.setFont("Helvetica-Bold", 12)
+    c.setFont("Helvetica-Bold", 11)
     c.drawCentredString(letra_x + 10*mm, letra_y + 22*mm, "FACTURA")
     
     # ORIGINAL en la parte superior
@@ -163,13 +163,6 @@ def crear_pdf_factura(datos, logo_path, output_path):
     
     fiscal_y -= 4*mm
     c.drawString(fiscal_x, fiscal_y, f"Fecha de Inicio de Actividades: {emisor['inicio_actividades']}")
-    
-    # NUEVO: Agregar nombre del asegurado si está disponible
-    nombre_asegurado = datos.get("nombre_asegurado", "")
-    if nombre_asegurado:
-        fiscal_y -= 5*mm
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(fiscal_x, fiscal_y, f"Asegurado: {nombre_asegurado}")
     
     # Línea separadora
     separador_y = height - 75*mm
