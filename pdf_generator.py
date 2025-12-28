@@ -2,8 +2,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
-from reportlab.platypus import Table, TableStyle
+from reportlab.platypus import Table, TableStyle, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT
 import qrcode
 from io import BytesIO
 import os
@@ -138,8 +140,11 @@ def crear_pdf_factura(datos, logo_path, output_path):
     fiscal_x = width / 2 + 5*mm  # Justo después de la línea vertical
     fiscal_y = height - 48*mm
     
-    punto_venta = str(datos.get("punto_venta", 2)).zfill(5)
-    cbte_nro = str(datos.get("cbte_nro", 1)).zfill(8)
+    # Formatear punto de venta y número sin tantos ceros
+    punto_venta_raw = datos.get("punto_venta", 2)
+    cbte_nro_raw = datos.get("cbte_nro", 1)
+    punto_venta = str(punto_venta_raw).zfill(4)  # 4 dígitos en lugar de 5
+    cbte_nro = str(cbte_nro_raw).zfill(8)  # Mantener 8 para el número
     fecha_emision = datos.get("fecha_emision").strftime("%d/%m/%Y") if hasattr(datos.get("fecha_emision"), 'strftime') else "28/12/2025"
     
     c.setFont("Helvetica", 9)
@@ -158,6 +163,13 @@ def crear_pdf_factura(datos, logo_path, output_path):
     
     fiscal_y -= 4*mm
     c.drawString(fiscal_x, fiscal_y, f"Fecha de Inicio de Actividades: {emisor['inicio_actividades']}")
+    
+    # NUEVO: Agregar nombre del asegurado si está disponible
+    nombre_asegurado = datos.get("nombre_asegurado", "")
+    if nombre_asegurado:
+        fiscal_y -= 5*mm
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(fiscal_x, fiscal_y, f"Asegurado: {nombre_asegurado}")
     
     # Línea separadora
     separador_y = height - 75*mm
@@ -219,12 +231,22 @@ def crear_pdf_factura(datos, logo_path, output_path):
     headers = ["Código", "Producto / Servicio", "Cantidad", "U. Medida", "Precio Unit.", "% Bonif", "Imp. Bonif.", "Subtotal"]
     
     # Datos
-    descripcion = datos.get("descripcion", "Servicio")
+    descripcion_texto = datos.get("descripcion", "Servicio")
     importe = float(datos.get("importe", 0))
+    
+    # Crear Paragraph para la descripción con word wrap
+    estilo_descripcion = ParagraphStyle(
+        'Descripcion',
+        fontName='Helvetica',
+        fontSize=8,
+        leading=10,
+        alignment=TA_LEFT
+    )
+    descripcion_paragraph = Paragraph(descripcion_texto, estilo_descripcion)
     
     data = [
         headers,
-        ["", descripcion, "1,00", "unidades", f"{importe:,.2f}", "0,00", "0,00", f"{importe:,.2f}"]
+        ["", descripcion_paragraph, "1,00", "unidades", f"{importe:,.2f}", "0,00", "0,00", f"{importe:,.2f}"]
     ]
     
     # Crear tabla con columna de descripción más ancha
@@ -234,10 +256,12 @@ def crear_pdf_factura(datos, logo_path, output_path):
         ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 8),
         ('FONT', (0, 1), (-1, -1), 'Helvetica', 8),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('ALIGN', (1, 1), (1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),  # Descripción alineada a la izquierda
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # Alineación vertical arriba
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('WORDWRAP', (1, 1), (1, -1)),  # Word wrap en la columna de descripción
+        ('ROWHEIGHT', (0, 1), (-1, -1), None),  # Altura automática según contenido
     ]))
     
     tabla.wrapOn(c, width, height)
