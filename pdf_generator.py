@@ -33,10 +33,10 @@ def crear_pdf_factura(datos, logo_path, output_path):
         except:
             pass
     
-    # Letra "C" en el centro (más pequeña)
+    # Letra "C" en el centro (más pequeña, bajada 4mm)
     c.setFont("Helvetica-Bold", 40)
     letra_x = width / 2 - 10*mm
-    letra_y = height - 28*mm
+    letra_y = height - 32*mm  # Bajado de 28mm a 32mm
     
     # LÍNEA VERTICAL DIVISORIA (cortada para no atravesar la C)
     linea_vertical_x = width / 2
@@ -44,8 +44,8 @@ def crear_pdf_factura(datos, logo_path, output_path):
     c.setLineWidth(1.5)
     # Línea superior (hasta arriba del cuadrado)
     c.line(linea_vertical_x, height - 10*mm, linea_vertical_x, letra_y + 20*mm + 2*mm)
-    # Línea inferior (desde abajo del cuadrado)
-    c.line(linea_vertical_x, letra_y - 2*mm, linea_vertical_x, height - 75*mm)
+    # Línea inferior (desde abajo del cuadrado hasta el separador)
+    c.line(linea_vertical_x, letra_y - 2*mm, linea_vertical_x, height - 79*mm)
     
     # Cuadro para la letra C (más pequeño)
     c.setStrokeColor(colors.black)
@@ -60,7 +60,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     c.drawCentredString(letra_x + 10*mm, letra_y + 2*mm, "COD. 011")
     
     # FACTURA arriba de la letra
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont("Helvetica-Bold", 12)
     c.drawCentredString(letra_x + 10*mm, letra_y + 22*mm, "FACTURA")
     
     # ORIGINAL en la parte superior
@@ -72,7 +72,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     # ================================================================
     
     emisor_x = margin
-    emisor_y = height - 48*mm
+    emisor_y = height - 52*mm  # Bajado de 48mm a 52mm para dar más espacio
     max_ancho_izq = (width / 2) - margin - 5*mm  # Limitar al ancho de la mitad izquierda
     
     # Determinar datos del emisor
@@ -138,7 +138,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     # ================================================================
     
     fiscal_x = width / 2 + 5*mm  # Justo después de la línea vertical
-    fiscal_y = height - 48*mm
+    fiscal_y = height - 52*mm  # Bajado de 48mm a 52mm
     
     # Formatear punto de venta y número sin tantos ceros
     punto_venta_raw = datos.get("punto_venta", 2)
@@ -164,8 +164,15 @@ def crear_pdf_factura(datos, logo_path, output_path):
     fiscal_y -= 4*mm
     c.drawString(fiscal_x, fiscal_y, f"Fecha de Inicio de Actividades: {emisor['inicio_actividades']}")
     
+    # NUEVO: Agregar nombre del asegurado si está disponible
+    nombre_asegurado = datos.get("nombre_asegurado", "")
+    if nombre_asegurado:
+        fiscal_y -= 5*mm
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(fiscal_x, fiscal_y, f"Asegurado: {nombre_asegurado}")
+    
     # Línea separadora
-    separador_y = height - 75*mm
+    separador_y = height - 79*mm  # Bajado de 75mm a 79mm
     c.setStrokeColor(colors.black)
     c.setLineWidth(0.5)
     c.line(margin, separador_y, width - margin, separador_y)
