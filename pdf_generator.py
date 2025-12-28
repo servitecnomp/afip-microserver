@@ -36,11 +36,14 @@ def crear_pdf_factura(datos, logo_path, output_path):
     letra_x = width / 2 - 10*mm
     letra_y = height - 28*mm
     
-    # LÍNEA VERTICAL DIVISORIA (pasa por el medio del cuadrado de la C)
+    # LÍNEA VERTICAL DIVISORIA (cortada para no atravesar la C)
     linea_vertical_x = width / 2
     c.setStrokeColor(colors.black)
     c.setLineWidth(1.5)
-    c.line(linea_vertical_x, height - 10*mm, linea_vertical_x, height - 75*mm)
+    # Línea superior (hasta arriba del cuadrado)
+    c.line(linea_vertical_x, height - 10*mm, linea_vertical_x, letra_y + 20*mm + 2*mm)
+    # Línea inferior (desde abajo del cuadrado)
+    c.line(linea_vertical_x, letra_y - 2*mm, linea_vertical_x, height - 75*mm)
     
     # Cuadro para la letra C (más pequeño)
     c.setStrokeColor(colors.black)
@@ -96,9 +99,36 @@ def crear_pdf_factura(datos, logo_path, output_path):
     
     c.setFont("Helvetica", 9)
     emisor_y -= 4*mm
-    c.drawString(emisor_x, emisor_y, f"Domicilio Comercial: {emisor['domicilio']}")
     
+    # Domicilio con ajuste de texto para que no se pase de la línea
+    domicilio_texto = f"Domicilio Comercial: {emisor['domicilio']}"
+    ancho_maximo = (width / 2) - margin - 7*mm  # Dejar margen antes de la línea vertical
+    
+    # Usar textObject para manejar el texto largo
+    texto_obj = c.beginText(emisor_x, emisor_y)
+    texto_obj.setFont("Helvetica", 9)
+    
+    # Dividir el texto si es muy largo
+    palabras = domicilio_texto.split()
+    linea_actual = ""
+    
+    for palabra in palabras:
+        linea_prueba = linea_actual + " " + palabra if linea_actual else palabra
+        ancho_linea = c.stringWidth(linea_prueba, "Helvetica", 9)
+        
+        if ancho_linea <= ancho_maximo:
+            linea_actual = linea_prueba
+        else:
+            texto_obj.textLine(linea_actual)
+            linea_actual = palabra
+            emisor_y -= 4*mm
+    
+    if linea_actual:
+        texto_obj.textLine(linea_actual)
+    
+    c.drawText(texto_obj)
     emisor_y -= 4*mm
+    
     c.drawString(emisor_x, emisor_y, f"Condición frente al IVA: {emisor['condicion_iva']}")
     
     # ================================================================
