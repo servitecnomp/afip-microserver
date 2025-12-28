@@ -227,8 +227,8 @@ def crear_pdf_factura(datos, logo_path, output_path):
         ["", descripcion, "1,00", "unidades", f"{importe:,.2f}", "0,00", "0,00", f"{importe:,.2f}"]
     ]
     
-    # Crear tabla
-    tabla = Table(data, colWidths=[20*mm, 60*mm, 18*mm, 18*mm, 20*mm, 15*mm, 18*mm, 20*mm])
+    # Crear tabla con columna de descripción más ancha
+    tabla = Table(data, colWidths=[15*mm, 80*mm, 15*mm, 15*mm, 18*mm, 12*mm, 15*mm, 18*mm])
     
     tabla.setStyle(TableStyle([
         ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 8),
