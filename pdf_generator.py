@@ -12,8 +12,12 @@ import os
 
 def crear_pdf_factura(datos, logo_path, output_path):
     """
-    Genera un PDF de factura con diseño profesional según modelos AFIP
+    Genera un PDF de factura o nota de crédito con diseño profesional según modelos AFIP
     """
+    
+    # Determinar si es Nota de Crédito
+    tipo_cbte = datos.get("tipo_cbte", 11)
+    es_nota_credito = (tipo_cbte == 13)
     
     # Configuración de página
     c = canvas.Canvas(output_path, pagesize=A4)
@@ -55,16 +59,18 @@ def crear_pdf_factura(datos, logo_path, output_path):
     # Letra C
     c.drawCentredString(letra_x + 10*mm, letra_y + 5*mm, "C")
     
-    # COD. 011 debajo de la letra
+    # COD. 011 o 013 según tipo
+    codigo_cbte = "011" if not es_nota_credito else "013"
     c.setFont("Helvetica", 8)
-    c.drawCentredString(letra_x + 10*mm, letra_y + 2*mm, "COD. 011")
+    c.drawCentredString(letra_x + 10*mm, letra_y + 2*mm, f"COD. {codigo_cbte}")
     
-    # FACTURA arriba de la letra
-    c.setFont("Helvetica-Bold", 12)
-    c.drawCentredString(letra_x + 10*mm, letra_y + 22*mm, "FACTURA")
+    # FACTURA o NOTA DE CRÉDITO arriba de la letra
+    titulo_cbte = "FACTURA" if not es_nota_credito else "NOTA DE CRÉDITO"
+    c.setFont("Helvetica", 12 if not es_nota_credito else 10)
+    c.drawCentredString(letra_x + 10*mm, letra_y + 22*mm, titulo_cbte)
     
     # ORIGINAL en la parte superior (subido para evitar superposición)
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont("Helvetica", 10)
     c.drawCentredString(width / 2, height - 5*mm, "ORIGINAL")
     
     # ================================================================
@@ -96,7 +102,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     cuit_emisor = str(datos.get("cuit_emisor", "")).replace("-", "").strip()
     emisor = emisor_data.get(cuit_emisor, emisor_data["27239676931"])
     
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont("Helvetica", 10)
     c.drawString(emisor_x, emisor_y, f"Razón Social: {emisor['razon_social']}")
     
     c.setFont("Helvetica", 9)
@@ -154,7 +160,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     c.drawString(fiscal_x, fiscal_y, f"Fecha de Emisión: {fecha_emision}")
     
     fiscal_y -= 5*mm
-    c.setFont("Helvetica-Bold", 9)
+    c.setFont("Helvetica", 9)
     c.drawString(fiscal_x, fiscal_y, f"CUIT: {cuit_emisor}")
     
     c.setFont("Helvetica", 9)
@@ -163,6 +169,13 @@ def crear_pdf_factura(datos, logo_path, output_path):
     
     fiscal_y -= 4*mm
     c.drawString(fiscal_x, fiscal_y, f"Fecha de Inicio de Actividades: {emisor['inicio_actividades']}")
+    
+    # NUEVO: Agregar nombre del asegurado si está disponible
+    nombre_asegurado = datos.get("nombre_asegurado", "")
+    if nombre_asegurado:
+        fiscal_y -= 5*mm
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(fiscal_x, fiscal_y, f"Asegurado: {nombre_asegurado}")
     
     # Línea separadora
     separador_y = height - 79*mm  # Bajado de 75mm a 79mm
@@ -191,7 +204,7 @@ def crear_pdf_factura(datos, logo_path, output_path):
     else:
         tipo_doc = "CUIT"
     
-    c.setFont("Helvetica-Bold", 9)
+    c.setFont("Helvetica", 9)
     c.drawString(margin, receptor_y, f"{tipo_doc}: {doc_receptor}")
     
     receptor_y -= 4*mm
@@ -209,6 +222,17 @@ def crear_pdf_factura(datos, logo_path, output_path):
     
     receptor_y -= 4*mm
     c.drawString(margin, receptor_y, "Condición de venta: Contado")
+    
+    # Si es Nota de Crédito, mostrar factura que anula
+    if es_nota_credito:
+        cbte_asoc_nro = datos.get("cbte_asoc_nro", "")
+        cbte_asoc_pto_vta = datos.get("cbte_asoc_pto_vta", punto_venta_raw)
+        receptor_y -= 5*mm
+        c.setFont("Helvetica-Bold", 9)
+        c.setFillColor(colors.red)
+        c.drawString(margin, receptor_y, f"ANULA FACTURA Nº {str(cbte_asoc_pto_vta).zfill(4)}-{str(cbte_asoc_nro).zfill(8)}")
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica", 9)
     
     # Línea separadora
     separador2_y = receptor_y - 3*mm
