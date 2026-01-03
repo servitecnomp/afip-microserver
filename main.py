@@ -464,7 +464,12 @@ def facturar():
             
             # Formato: CUIT_011_PV_NUM_Nombre.pdf
             # Ejemplo: 27239676931_011_2_7_SusanaGiachino.pdf
-            pdf_filename = f"{cuit_emisor}_011_{punto_venta}_{cbte_nro}{nombre_archivo}.pdf"
+            # Código de comprobante: 011 para factura, 013 para NC
+            tipo_cbte = data.get("tipo_cbte", 11)
+            codigo_cbte = "011" if tipo_cbte == 11 else "013"
+
+            # Formato: CUIT_COD_PV_NUM_Nombre.pdf
+            pdf_filename = f"{cuit_emisor}_{codigo_cbte}_{punto_venta}_{cbte_nro}{nombre_archivo}.pdf"
             pdf_path = os.path.join(PDF_DIR, pdf_filename)
             
             # Datos para el PDF
