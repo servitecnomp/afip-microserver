@@ -337,6 +337,25 @@ def crear_factura(data):
         'CondicionIVAReceptorId': condicion_iva_receptor  # Campo obligatorio para AFIP
     }
     
+    # Si es Nota de Crédito (tipo 13), agregar comprobante asociado
+    if tipo_cbte == 13:
+        cbte_asoc_tipo = int(data.get("cbte_asoc_tipo", 11))  # Por defecto factura tipo C
+        cbte_asoc_pto_vta = int(data.get("cbte_asoc_pto_vta", punto_venta))
+        cbte_asoc_nro = int(data.get("cbte_asoc_nro"))
+        
+        FeDetReq['CbtesAsoc'] = {
+            'CbteAsoc': [{
+                'Tipo': cbte_asoc_tipo,
+                'PtoVta': cbte_asoc_pto_vta,
+                'Nro': cbte_asoc_nro
+            }]
+        }
+        
+        print(f"Nota de Crédito - Factura asociada:")
+        print(f"  - Tipo: {cbte_asoc_tipo}")
+        print(f"  - Punto Venta: {cbte_asoc_pto_vta}")
+        print(f"  - Número: {cbte_asoc_nro}")
+    
     FeCAEReq = {
         'FeCabReq': FeCabReq,
         'FeDetReq': {'FECAEDetRequest': [FeDetReq]}
@@ -465,6 +484,11 @@ def facturar():
                 "condicion_iva": data.get("condicion_iva", "IVA Responsable Inscripto"),
                 "nombre_asegurado": nombre_asegurado
             }
+            
+            # Si es Nota de Crédito, agregar datos del comprobante asociado
+            if data.get("tipo_cbte") == 13:
+                datos_pdf["cbte_asoc_nro"] = data.get("cbte_asoc_nro", "")
+                datos_pdf["cbte_asoc_pto_vta"] = data.get("cbte_asoc_pto_vta", punto_venta)
             
             # Generar PDF
             crear_pdf_factura(datos_pdf, LOGO_PATH, pdf_path)
