@@ -1,200 +1,167 @@
+import os
+import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from zeep import Client
 from zeep.transports import Transport
-from zeep.exceptions import Fault
 from requests import Session
 from requests.adapters import HTTPAdapter
-from urllib3.util.ssl_ import create_urllib3_context
-import datetime
-import os
-import base64
-import subprocess
+from requests.packages.urllib3.poolmanager import PoolManager
 import ssl
+from zeep.exceptions import Fault
 from pdf_generator import crear_pdf_factura
 
 app = Flask(__name__)
+
+# ======================================================================
+# CONFIGURACIÓN
+# ======================================================================
+
+# Modo: "PRODUCCION" o "HOMOLOGACION"
+MODO = os.environ.get("MODO", "PRODUCCION")
+
+# CUITs
+CUIT_1 = "27239676931"  # Paula
+CUIT_2 = "27461124149"  # Meme
+
+# Certificados
+if MODO == "PRODUCCION":
+    CERT_1 = "certificado_paula.crt"
+    KEY_1 = "clave_privada_paula.key"
+    CERT_2 = "certificado_meme.crt"
+    KEY_2 = "clave_privada_meme.key"
+    WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
+    WSFE = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
+else:
+    CERT_1 = "certificado_paula_homo.crt"
+    KEY_1 = "clave_privada_paula_homo.key"
+    CERT_2 = "certificado_meme_homo.crt"
+    KEY_2 = "clave_privada_meme_homo.key"
+    WSAA = "https://wsaahomo.afip.gov.ar/ws/services/LoginCms?wsdl"
+    WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
 # Directorio para PDFs
 PDF_DIR = os.path.join(os.path.dirname(__file__), "pdfs")
 os.makedirs(PDF_DIR, exist_ok=True)
 
-# Logo path
-LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.jpeg")
+# Logo
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.png")
 
-# ======================================================================
-# CACHE DE TOKENS PARA REUTILIZACIÓN
-# ======================================================================
-# Diccionario para guardar tokens por CUIT: {cuit: {'token': ..., 'sign': ..., 'expiracion': ...}}
+# Caché de tokens (para evitar límite de AFIP)
 TOKEN_CACHE = {}
 
-def get_cached_token(cuit_emisor, cert_file, key_file):
-    """
-    Obtiene un token de AFIP, reutilizando el caché si existe y no ha expirado
-    """
-    import datetime
-    
-    # Verificar si tenemos un token en caché
-    if cuit_emisor in TOKEN_CACHE:
-        cache_entry = TOKEN_CACHE[cuit_emisor]
-        expiracion = cache_entry.get('expiracion')
-        
-        # Si el token todavía es válido (con margen de 30 minutos)
-        if expiracion and datetime.datetime.now() < (expiracion - datetime.timedelta(minutes=30)):
-            print(f"✓ Usando token en caché (válido hasta {expiracion.strftime('%H:%M:%S')})")
-            return cache_entry['token'], cache_entry['sign']
-    
-    # Si no hay token en caché o expiró, generar uno nuevo
-    print("Generando nuevo token de AFIP...")
-    token, sign = get_token_sign(cert_file, key_file)
-    
-    # Guardar en caché (tokens de AFIP duran 12 horas)
-    TOKEN_CACHE[cuit_emisor] = {
-        'token': token,
-        'sign': sign,
-        'expiracion': datetime.datetime.now() + datetime.timedelta(hours=12)
-    }
-    
-    print(f"✓ Nuevo token generado y guardado en caché")
-    return token, sign
-
 # ======================================================================
-# MODO: TESTING o PRODUCCION
-# ======================================================================
-# Cambiar a "PRODUCCION" cuando quieras facturar en serio
-MODO = "TESTING"  # ← CAMBIAR AQUÍ ENTRE "TESTING" Y "PRODUCCION"
+# ADAPTADOR SSL PARA DES (3DES)
 # ======================================================================
 
-# Configuración SSL para permitir conexión a AFIP
 class DESAdapter(HTTPAdapter):
-    """
-    Adaptador que permite cifrados DH antiguos para conectarse a AFIP
-    """
+    """Adaptador para permitir conexiones con cifrado 3DES"""
     def init_poolmanager(self, *args, **kwargs):
-        context = create_urllib3_context()
+        context = ssl.create_default_context()
         context.set_ciphers('DEFAULT@SECLEVEL=1')
         kwargs['ssl_context'] = context
-        return super(DESAdapter, self).init_poolmanager(*args, **kwargs)
-    
-    def proxy_manager_for(self, *args, **kwargs):
-        context = create_urllib3_context()
-        context.set_ciphers('DEFAULT@SECLEVEL=1')
-        kwargs['ssl_context'] = context
-        return super(DESAdapter, self).proxy_manager_for(*args, **kwargs)
+        return super().init_poolmanager(*args, **kwargs)
 
-# ----------------------------------------------------------------------
-# CONFIGURACIÓN SEGÚN MODO
-# ----------------------------------------------------------------------
+# ======================================================================
+# FUNCIONES DE AUTENTICACIÓN
+# ======================================================================
 
-CUIT_1 = "27239676931"
-CUIT_2 = "27461124149"
-
-if MODO == "TESTING":
-    print("=" * 60)
-    print("⚠️  MODO TESTING ACTIVADO - FACTURAS NO SON REALES")
-    print("=" * 60)
-    
-    # Certificados de homologación
-    CERT_1 = "homologacion_27239676931.crt"
-    KEY_1  = "homologacion_27239676931.key"
-    CERT_2 = "facturacion27461124149.crt"
-    KEY_2  = "cuit_27461124149.key"
-    
-    # URLs de homologación
-    WSAA = "https://wsaahomo.afip.gov.ar/ws/services/LoginCms?wsdl"
-    WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
-    
-else:  # PRODUCCION
-    print("=" * 60)
-    print("✅ MODO PRODUCCIÓN - FACTURAS REALES")
-    print("=" * 60)
-    
-    # Certificados de producción
-    CERT_1 = "facturacion27239676931.crt"
-    KEY_1  = "cuit_27239676931.key"
-    CERT_2 = "facturacion27461124149.crt"
-    KEY_2  = "cuit_27461124149.key"
-    
-    # URLs de producción
-    WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
-    WSFE = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
-
-# Datos de los emisores
-EMISOR_DATA = {
-    "27239676931": {
-        "razon_social": "DEVRIES MARIA PAULA",
-        "domicilio": "Rodriguez Peña 1789 - Mar Del Plata Sur, Buenos Aires",
-        "ingresos_brutos": "27239676931",
-        "inicio_actividades": "01/01/2021"
-    },
-    "27461124149": {
-        "razon_social": "CACCIATO MARIA MERCEDES",
-        "domicilio": "General Paz 4662 - Mar Del Plata Sur, Buenos Aires",
-        "ingresos_brutos": "27461124149",
-        "inicio_actividades": "01/12/2023"
-    }
-}
-
-# ----------------------------------------------------------------------
-# UTILIDADES
-# ----------------------------------------------------------------------
-
-def load_cert(cuit_emisor):
-    if cuit_emisor == CUIT_1:
+def load_cert(cuit):
+    """Carga el certificado según el CUIT"""
+    if cuit == CUIT_1:
         return CERT_1, KEY_1
-    elif cuit_emisor == CUIT_2:
+    elif cuit == CUIT_2:
         return CERT_2, KEY_2
     else:
-        raise Exception("CUIT emisor sin certificado configurado")
+        raise Exception(f"CUIT {cuit} no configurado")
 
-def create_cms(tra_path, cert_file, key_file):
-    cmd_list = [
-        "openssl", "cms", "-sign", "-in", tra_path,
-        "-signer", cert_file, "-inkey", key_file,
-        "-nodetach", "-outform", "der"
-    ]
-    
-    try:
-        result = subprocess.run(cmd_list, capture_output=True, check=True)
-        cms_bin = result.stdout
-    except subprocess.CalledProcessError as e:
-        error_message = e.stderr.decode('utf-8', errors='ignore')
-        raise Exception(f"Error OpenSSL: {error_message}")
-
-    cms_b64 = base64.b64encode(cms_bin).decode("ascii")
-    return cms_b64
-
-def get_token_sign(cert_file, key_file):
-    now = datetime.datetime.utcnow()
-    
-    generation_time = now.strftime('%Y-%m-%dT%H:%M:%S.000-00:00')
-    expiration_time = (now + datetime.timedelta(hours=12)).strftime('%Y-%m-%dT%H:%M:%S.000-00:00')
-
+def create_tra(service="wsfe"):
+    """Crea el TRA (Ticket de Requerimiento de Acceso)"""
     tra = f"""<?xml version="1.0" encoding="UTF-8"?>
 <loginTicketRequest version="1.0">
   <header>
-    <uniqueId>{int(now.timestamp())}</uniqueId>
-    <generationTime>{generation_time}</generationTime>
-    <expirationTime>{expiration_time}</expirationTime>
+    <uniqueId>{int(datetime.datetime.now().timestamp())}</uniqueId>
+    <generationTime>{datetime.datetime.now().isoformat()}</generationTime>
+    <expirationTime>{(datetime.datetime.now() + datetime.timedelta(hours=12)).isoformat()}</expirationTime>
   </header>
-  <service>wsfe</service>
+  <service>{service}</service>
 </loginTicketRequest>"""
+    return tra
 
-    tra_path = os.path.join(os.getcwd(), "tra.xml")
+def sign_tra(tra, cert_file, key_file):
+    """Firma el TRA con el certificado"""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.serialization import pkcs7
+    from cryptography.hazmat.backends import default_backend
+    from cryptography import x509
     
-    with open(tra_path, "w") as f:
-        f.write(tra)
+    # Cargar certificado y clave privada
+    with open(cert_file, 'rb') as f:
+        cert_data = f.read()
+        cert = x509.load_pem_x509_certificate(cert_data, default_backend())
+    
+    with open(key_file, 'rb') as f:
+        key_data = f.read()
+        key = serialization.load_pem_private_key(key_data, password=None, backend=default_backend())
+    
+    # Firmar el TRA
+    options = [pkcs7.PKCS7Options.Binary]
+    signed_data = pkcs7.PKCS7SignatureBuilder().set_data(
+        tra.encode('utf-8')
+    ).add_signer(
+        cert, key, hashes.SHA256()
+    ).sign(
+        serialization.Encoding.DER, options
+    )
+    
+    import base64
+    return base64.b64encode(signed_data).decode('utf-8')
 
-    cms = create_cms(tra_path, cert_file, key_file)
+def get_cached_token(cuit, cert_file, key_file):
+    """Obtiene un token desde caché o genera uno nuevo si expiró"""
     
-    os.remove(tra_path)
+    # Verificar si hay token en caché y no expiró
+    if cuit in TOKEN_CACHE:
+        cached = TOKEN_CACHE[cuit]
+        expiration = cached.get("expiration")
+        
+        # Si el token expira en más de 30 minutos, reutilizarlo
+        if expiration and expiration > datetime.datetime.now() + datetime.timedelta(minutes=30):
+            print(f"✓ Reutilizando token en caché para {cuit} (expira: {expiration})")
+            return cached["token"], cached["sign"]
+    
+    # Si no hay token válido, generar uno nuevo
+    print(f"Generando nuevo token para {cuit}...")
+    token, sign = get_token(cert_file, key_file)
+    
+    # Guardar en caché (tokens de AFIP duran 12 horas)
+    TOKEN_CACHE[cuit] = {
+        "token": token,
+        "sign": sign,
+        "expiration": datetime.datetime.now() + datetime.timedelta(hours=12)
+    }
+    
+    print(f"✓ Token generado y almacenado en caché")
+    return token, sign
 
-    # Usar sesión con adaptador SSL personalizado
-    session = Session()
-    session.mount('https://', DESAdapter())
-    transport = Transport(session=session)
-    client = Client(WSAA, transport=transport)
-    
+def get_token(cert_file, key_file):
+    """Obtiene token y sign de AFIP"""
     try:
+        # 1) Crear TRA
+        tra = create_tra()
+        
+        # 2) Firmar TRA
+        cms = sign_tra(tra, cert_file, key_file)
+        
+        # 3) Cliente WSAA con SSL configurado
+        session = Session()
+        session.mount('https://', DESAdapter())
+        session.headers.update({
+            'Content-Type': 'text/xml; charset=utf-8'
+        })
+        transport = Transport(session=session)
+        client = Client(WSAA, transport=transport)
+        
+        # 4) Llamar a loginCms
         response = client.service.loginCms(cms)
         
         # Debug: ver qué tipo de objeto es
@@ -397,34 +364,33 @@ def crear_factura(data):
                 print(f"  - Observación {obs.Code}: {obs.Msg}")
         
         # Verificar si hay CAE
-        if not det_resp.CAE:
+        if det_resp.Resultado == 'A':  # Aprobado
+            cae = det_resp.CAE
+            vencimiento = det_resp.CAEFchVto
+            print(f"✓ CAE obtenido: {cae}")
+            print(f"✓ Vencimiento: {vencimiento}")
+            
+            return {
+                "cbte_nro": cbte_nro,
+                "cae": cae,
+                "vencimiento": vencimiento,
+                "fecha": fecha
+            }
+        else:
+            # Rechazado
+            msg_obs = "Sin observaciones"
             if hasattr(det_resp, 'Observaciones') and det_resp.Observaciones:
-                obs_msg = det_resp.Observaciones.Obs[0].Msg
-                obs_code = det_resp.Observaciones.Obs[0].Code
-                print(f"✗ AFIP rechazó (Obs {obs_code}): {obs_msg}")
-                raise Exception(f"AFIP rechazó (código {obs_code}): {obs_msg}")
-            else:
-                print(f"✗ AFIP rechazó sin CAE ni observaciones")
-                raise Exception("AFIP rechazó sin CAE ni observaciones")
-        
-        print(f"✓ CAE obtenido: {det_resp.CAE}")
-        print(f"✓ Vencimiento: {det_resp.CAEFchVto}")
-        print(f"=== FACTURACIÓN EXITOSA ===\n")
-        
-        return {
-            "cbte_nro": cbte_nro,
-            "cae": det_resp.CAE,
-            "vencimiento": det_resp.CAEFchVto,
-        }
-        
+                msg_obs = det_resp.Observaciones.Obs[0].Msg
+            
+            print(f"✗ Comprobante rechazado: {msg_obs}")
+            raise Exception(f"Comprobante rechazado por AFIP: {msg_obs}")
+            
     except Fault as e:
-        print(f"✗ Fault en CAE: {e.message}")
-        raise Exception(f"Error CAE (Fault): {e.message}")
+        print(f"✗ Error SOAP: {e.message}")
+        raise Exception(f"Error AFIP: {e.message}")
     except Exception as e:
-        if "AFIP" in str(e):
-            raise
-        print(f"✗ Exception en CAE: {str(e)}")
-        raise Exception(f"Error CAE: {str(e)}")
+        print(f"✗ Error inesperado: {str(e)}")
+        raise
 
 # ----------------------------------------------------------------------
 # ENDPOINTS
@@ -440,7 +406,6 @@ def facturar():
         factura = crear_factura(data)
         
         # Generar PDF automáticamente
-       # Generar PDF automáticamente
         print("Generando PDF...")
         print(f"DEBUG - Datos recibidos:")
         print(f"  compania: {data.get('compania', '')}")
