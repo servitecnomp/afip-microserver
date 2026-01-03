@@ -440,6 +440,7 @@ def facturar():
         factura = crear_factura(data)
         
         # Generar PDF automáticamente
+       # Generar PDF automáticamente
         print("Generando PDF...")
         print(f"DEBUG - Datos recibidos:")
         print(f"  compania: {data.get('compania', '')}")
@@ -450,6 +451,7 @@ def facturar():
             cuit_emisor = data.get("cuit_emisor")
             punto_venta = data.get("punto_venta", 2)
             cbte_nro = factura["cbte_nro"]
+            tipo_cbte = data.get("tipo_cbte", 11)
             
             # Nombre del asegurado para el archivo (sin espacios ni caracteres especiales)
             nombre_asegurado = data.get("nombre_asegurado", "")
@@ -462,13 +464,12 @@ def facturar():
                 nombre_limpio = ''.join(c if c.isalnum() else '' for c in nombre_limpio)
                 nombre_archivo = f"_{nombre_limpio[:30]}"  # Máximo 30 caracteres
             
-            # Formato: CUIT_011_PV_NUM_Nombre.pdf
-            # Ejemplo: 27239676931_011_2_7_SusanaGiachino.pdf
             # Código de comprobante: 011 para factura, 013 para NC
-            tipo_cbte = data.get("tipo_cbte", 11)
             codigo_cbte = "011" if tipo_cbte == 11 else "013"
-
+            
             # Formato: CUIT_COD_PV_NUM_Nombre.pdf
+            # Ejemplo factura: 27239676931_011_2_7_SusanaGiachino.pdf
+            # Ejemplo NC: 27239676931_013_2_17_MariaEugeniaCarregal.pdf
             pdf_filename = f"{cuit_emisor}_{codigo_cbte}_{punto_venta}_{cbte_nro}{nombre_archivo}.pdf"
             pdf_path = os.path.join(PDF_DIR, pdf_filename)
             
@@ -477,7 +478,7 @@ def facturar():
                 "cuit_emisor": cuit_emisor,
                 "cuit_receptor": data.get("doc_receptor") or data.get("cuit_receptor", ""),
                 "punto_venta": punto_venta,
-                "tipo_cbte": data.get("tipo_cbte", 11),
+                "tipo_cbte": tipo_cbte,
                 "cbte_nro": cbte_nro,
                 "fecha_emision": datetime.datetime.now(),
                 "cae": factura["cae"],
@@ -491,7 +492,7 @@ def facturar():
             }
             
             # Si es Nota de Crédito, agregar datos del comprobante asociado
-            if data.get("tipo_cbte") == 13:
+            if tipo_cbte == 13:
                 datos_pdf["cbte_asoc_nro"] = data.get("cbte_asoc_nro", "")
                 datos_pdf["cbte_asoc_pto_vta"] = data.get("cbte_asoc_pto_vta", punto_venta)
             
