@@ -175,8 +175,15 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     )
     
     # Tabla principal con logo en esquina superior izquierda
+    tabla_emisor = Table([[logo], [col_emisor]], colWidths=[65*mm], rowHeights=[20*mm, None])
+    tabla_emisor.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),  # Logo centrado
+        ('ALIGN', (0, 1), (0, 1), 'LEFT'),    # Texto a la izquierda
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    
     bloque_principal = Table([
-        [Table([[logo], [col_emisor]], colWidths=[20*mm], rowHeights=[20*mm, None]), col_letra, col_factura]
+        [tabla_emisor, col_letra, col_factura]
     ], colWidths=[65*mm, 25*mm, 90*mm])
     
     bloque_principal.setStyle(TableStyle([
