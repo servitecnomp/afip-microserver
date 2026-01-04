@@ -140,31 +140,39 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     
     # ===== BLOQUE PRINCIPAL: 3 COLUMNAS =====
     try:
-        logo = RLImage(logo_path, width=20*mm, height=20*mm)
+        logo = RLImage(logo_path, width=25*mm, height=25*mm)
     except:
         logo = Paragraph("<b>LOGO</b>", style_normal)
     
-    # Columna 1: Emisor con logo
-    col_emisor = Paragraph(
-        f"<b>{emisor['razon_social']}</b><br/><br/>"
-        f"<b>Razón Social:</b> {emisor['razon_social']}<br/>"
-        f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/>"
-        f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}",
-        style_small
-    )
+    # Columna 1: Logo + Emisor (estructura simplificada)
+    emisor_con_logo = [
+        [logo],
+        [Paragraph(f"<b>{emisor['razon_social']}</b>", style_small)],
+        [Paragraph("", style_small)],  # Espacio
+        [Paragraph(f"<b>Razón Social:</b><br/>{emisor['razon_social']}", style_small)],
+        [Paragraph(f"<b>Domicilio Comercial:</b><br/>{emisor['domicilio']}", style_small)],
+        [Paragraph(f"<b>Condición frente al IVA:</b><br/>{emisor['condicion_iva']}", style_small)]
+    ]
+    
+    col_emisor = Table(emisor_con_logo, colWidths=[60*mm])
+    col_emisor.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),  # Logo centrado
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),   # Texto a la izquierda
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
     
     # Columna 2: Letra C con código dinámico
     codigo_cbte = "013" if es_nota_credito else "011"
     col_letra = Paragraph(
-        "<para align=center><b><font size=28>C</font></b><br/>"
-        f"<font size=8>COD. {codigo_cbte}</font></para>",
+        "<para align=center><b><font size=32>C</font></b><br/>"
+        f"<font size=9>COD. {codigo_cbte}</font></para>",
         style_normal
     )
     
     # Columna 3: Datos de factura/NC con título dinámico
     titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
     col_factura = Paragraph(
-        f"<b><font size=11>{titulo_cbte}</font></b><br/><br/>"
+        f"<b><font size=12>{titulo_cbte}</font></b><br/><br/>"
         f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)}  "
         f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
         f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
@@ -174,22 +182,24 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         style_small
     )
     
-    # Tabla principal con logo en esquina superior izquierda
+    # Tabla principal con 3 columnas
     bloque_principal = Table([
-        [Table([[logo], [col_emisor]], colWidths=[20*mm], rowHeights=[20*mm, None]), col_letra, col_factura]
+        [col_emisor, col_letra, col_factura]
     ], colWidths=[65*mm, 25*mm, 90*mm])
     
     bloque_principal.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
         ('ALIGN', (1, 0), (1, 0), 'CENTER'),
         ('ALIGN', (2, 0), (2, 0), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),
-        ('LINEAFTER', (1, 0), (1, 0), 2, colors.black),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 1.5, colors.black),
+        ('LINEAFTER', (0, 0), (0, 0), 1.5, colors.black),
+        ('LINEAFTER', (1, 0), (1, 0), 2.5, colors.black),  # Línea más gruesa después de C
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (0, 0), 3),
+        ('LEFTPADDING', (1, 0), (1, 0), 3),
+        ('LEFTPADDING', (2, 0), (2, 0), 5),
         ('RIGHTPADDING', (0, 0), (-1, -1), 5),
     ]))
     
@@ -213,15 +223,25 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     story.append(Spacer(1, 2*mm))
     
     # ===== DATOS DEL RECEPTOR =====
+    # Construir contenido dinámico
+    receptor_content = (
+        f"<b>CUIT:</b> {cuit_receptor}<br/>"
+        f"<b>Apellido y Nombre / Razón Social:</b> {receptor['razon_social']}<br/>"
+        f"<b>Condición frente al IVA:</b> {receptor['condicion_iva']}<br/>"
+        f"<b>Domicilio:</b> {receptor['domicilio']}<br/>"
+    )
+    
+    # Si es NC, agregar referencia a factura anulada (formato AFIP)
+    if es_nota_credito:
+        cbte_asoc_nro = datos_factura.get("cbte_asoc_nro", "")
+        cbte_asoc_pto_vta = datos_factura.get("cbte_asoc_pto_vta", datos_factura.get("punto_venta", 2))
+        if cbte_asoc_nro:
+            receptor_content += f"<b>Fac. C:</b> {str(cbte_asoc_pto_vta).zfill(5)}-{str(cbte_asoc_nro).zfill(8)}<br/>"
+    
+    receptor_content += f"<b>Condición de venta:</b> Otra"
+    
     receptor_table = Table([[
-        Paragraph(
-            f"<b>CUIT:</b> {cuit_receptor}<br/>"
-            f"<b>Apellido y Nombre / Razón Social:</b> {receptor['razon_social']}<br/>"
-            f"<b>Condición frente al IVA:</b> {receptor['condicion_iva']}<br/>"
-            f"<b>Domicilio:</b> {receptor['domicilio']}<br/>"
-            f"<b>Condición de venta:</b> Otra",
-            style_small
-        )
+        Paragraph(receptor_content, style_small)
     ]], colWidths=[180*mm])
     
     receptor_table.setStyle(TableStyle([
