@@ -166,7 +166,8 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
         ('VALIGN', (0, 1), (0, 1), 'TOP'),
-        ('BOX', (0, 0), (-1, -1), 1.5, colors.black),  # CUADRADO alrededor de toda la tabla
+        ('BOX', (0, 0), (-1, -1), 1.5, colors.black),  # CUADRADO alrededor
+        ('BACKGROUND', (0, 0), (-1, -1), colors.white),  # FONDO BLANCO para tapar línea
         ('TOPPADDING', (0, 0), (-1, -1), 0),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
@@ -187,7 +188,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     )
     
     # Tabla principal con logo en esquina superior izquierda
-    tabla_emisor = Table([[logo], [col_emisor]], colWidths=[65*mm], rowHeights=[20*mm, None])
+    tabla_emisor = Table([[logo], [col_emisor]], colWidths=[80*mm], rowHeights=[20*mm, None])
     tabla_emisor.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'CENTER'),  # Logo centrado
         ('ALIGN', (0, 1), (0, 1), 'LEFT'),    # Texto a la izquierda
@@ -196,7 +197,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     
     bloque_principal = Table([
         [tabla_emisor, col_letra, col_factura]
-    ], colWidths=[65*mm, 20*mm, 95*mm])  # Columna del medio: 20mm para cuadrado
+    ], colWidths=[80*mm, 20*mm, 80*mm])  # División al medio: (80+10)=90 | (10+80)=90
     
     bloque_principal.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
@@ -204,7 +205,9 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('ALIGN', (2, 0), (2, 0), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),  # Borde exterior
-        # Sin línea vertical después de col 1 - eliminada
+        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # Línea vertical al medio (izq del cuadrado)
+        ('LINEAFTER', (1, 0), (1, 0), 1, colors.black),  # Línea vertical al medio (der del cuadrado)
+        # El cuadrado con fondo blanco tapa ambas líneas en el centro
         ('TOPPADDING', (0, 0), (-1, -1), 5),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('LEFTPADDING', (0, 0), (-1, -1), 5),
