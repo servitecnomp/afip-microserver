@@ -88,12 +88,16 @@ def generar_qr_afip(datos_factura):
     return buffer
 
 def crear_pdf_factura(datos_factura, logo_path, output_path):
-    """Crea un PDF de factura con formato AFIP mejorado"""
+    """Crea un PDF de factura o nota de crédito con formato AFIP mejorado"""
     
     cuit_emisor = str(datos_factura["cuit_emisor"]).replace("-", "").replace(" ", "")
     cuit_receptor = str(datos_factura["cuit_receptor"]).replace("-", "").replace(" ", "")
     fecha_emision = datos_factura["fecha_emision"]
     vencimiento_cae = formatear_vencimiento_cae(str(datos_factura["vencimiento_cae"]))
+    
+    # Detectar si es Nota de Crédito
+    tipo_cbte = int(datos_factura.get("tipo_cbte", 11))
+    es_nota_credito = (tipo_cbte == 13)
     
     emisor = EMISOR_DATA.get(cuit_emisor, EMISOR_DATA["27239676931"])
     
@@ -149,16 +153,18 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         style_small
     )
     
-    # Columna 2: Letra C
+    # Columna 2: Letra C con código dinámico
+    codigo_cbte = "013" if es_nota_credito else "011"
     col_letra = Paragraph(
         "<para align=center><b><font size=28>C</font></b><br/>"
-        "<font size=8>COD. 011</font></para>",
+        f"<font size=8>COD. {codigo_cbte}</font></para>",
         style_normal
     )
     
-    # Columna 3: Datos de factura
+    # Columna 3: Datos de factura/NC con título dinámico
+    titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
     col_factura = Paragraph(
-        f"<b><font size=11>FACTURA</font></b><br/><br/>"
+        f"<b><font size=11>{titulo_cbte}</font></b><br/><br/>"
         f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)}  "
         f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
         f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
@@ -231,6 +237,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     importe = float(datos_factura["importe"])
     descripcion = datos_factura.get("descripcion", "Servicio")
     
+    # Usar Paragraph para descripción con word wrap
     productos_data = [
         [Paragraph("<b>Código</b>", style_small),
          Paragraph("<b>Producto / Servicio</b>", style_small),
@@ -240,20 +247,26 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
          Paragraph("<b>% Bonif</b>", style_small),
          Paragraph("<b>Imp. Bonif.</b>", style_small),
          Paragraph("<b>Subtotal</b>", style_small)],
-        ["", descripcion, "1,00", "unidades", f"{importe:,.2f}", "0,00", "0,00", f"{importe:,.2f}"]
+        ["", Paragraph(descripcion, style_small), "1,00", "unidades", f"{importe:,.2f}", "0,00", "0,00", f"{importe:,.2f}"]
     ]
     
-    productos_table = Table(productos_data, colWidths=[20*mm, 60*mm, 20*mm, 20*mm, 20*mm, 15*mm, 15*mm, 20*mm])
+    # Aumentar ancho de columna de descripción a 70mm
+    productos_table = Table(productos_data, colWidths=[15*mm, 70*mm, 18*mm, 18*mm, 18*mm, 13*mm, 13*mm, 18*mm])
     
     productos_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-        ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
-        ('ALIGN', (1, 1), (1, 1), 'LEFT'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # Código: centrado
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),   # Encabezado Producto: centrado
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Descripción: izquierda
+        ('ALIGN', (2, 0), (-1, -1), 'CENTER'), # Resto: centrado
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), # Alineación vertical
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
     ]))
     
     story.append(productos_table)
