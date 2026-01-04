@@ -35,6 +35,30 @@ def crear_pdf_factura(datos, logo_path, output_path):
     output_path: donde guardar el PDF
     """
     
+    # VERIFICACIONES DEFENSIVAS
+    print(f"PDF GENERATOR - Iniciando")
+    print(f"  output_path: {output_path} (tipo: {type(output_path)})")
+    print(f"  logo_path: {logo_path} (tipo: {type(logo_path)})")
+    
+    # Asegurar que output_path sea string
+    if not isinstance(output_path, str):
+        print(f"  WARN: output_path no es string, convirtiendo...")
+        output_path = str(output_path)
+    
+    # Verificar y sanitizar logo_path
+    if logo_path is not None:
+        from io import BytesIO
+        if isinstance(logo_path, (BytesIO, bytes)):
+            print(f"  WARN: logo_path es {type(logo_path)}, usando None")
+            logo_path = None
+        elif not isinstance(logo_path, str):
+            print(f"  WARN: logo_path no es string, convirtiendo...")
+            logo_path = str(logo_path)
+        
+        if logo_path and not os.path.exists(logo_path):
+            print(f"  WARN: Logo no existe en {logo_path}")
+            logo_path = None
+    
     # Extraer datos
     cuit_emisor = str(datos.get("cuit_emisor", ""))
     cuit_receptor = str(datos.get("cuit_receptor", ""))
