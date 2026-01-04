@@ -23,17 +23,17 @@ MODO = os.environ.get("MODO", "PRODUCCION")
 CUIT_1 = "27239676931"  # Paula
 CUIT_2 = "27461124149"  # Meme
 
-# Certificados
+# Certificados - NOMBRES CORRECTOS SEGÚN GITHUB
 if MODO == "PRODUCCION":
-    CERT_1 = "certificado_paula.crt"
-    KEY_1 = "clave_privada_paula.key"
-    CERT_2 = "certificado_meme.crt"
-    KEY_2 = "clave_privada_meme.key"
+    CERT_1 = "facturacion27239676931.crt"
+    KEY_1 = "cuit_27239676931.key"
+    CERT_2 = "facturacion27461124149.crt"
+    KEY_2 = "cuit_27461124149.key"
     WSAA = "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl"
     WSFE = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
 else:
-    CERT_1 = "certificado_paula_homo.crt"
-    KEY_1 = "clave_privada_paula_homo.key"
+    CERT_1 = "homologacion_27239676931.crt"
+    KEY_1 = "homologacion_27239676931.key"
     CERT_2 = "certificado_meme_homo.crt"
     KEY_2 = "clave_privada_meme_homo.key"
     WSAA = "https://wsaahomo.afip.gov.ar/ws/services/LoginCms?wsdl"
@@ -44,7 +44,7 @@ PDF_DIR = os.path.join(os.path.dirname(__file__), "pdfs")
 os.makedirs(PDF_DIR, exist_ok=True)
 
 # Logo
-LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.png")
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.jpeg")
 
 # Caché de tokens (para evitar límite de AFIP)
 TOKEN_CACHE = {}
