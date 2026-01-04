@@ -88,7 +88,7 @@ def generar_qr_afip(datos_factura):
     return buffer
 
 def crear_pdf_factura(datos_factura, logo_path, output_path):
-    """Crea un PDF de factura o nota de crédito con formato AFIP"""
+    """Crea un PDF de factura o nota de crédito con formato AFIP corrigiendo el encabezado"""
 
     cuit_emisor = str(datos_factura["cuit_emisor"]).replace("-", "").replace(" ", "")
     cuit_receptor = str(datos_factura["cuit_receptor"]).replace("-", "").replace(" ", "")
@@ -126,7 +126,10 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
 
     styles = getSampleStyleSheet()
     style_normal = ParagraphStyle('Normal', fontSize=8, leading=10)
-    style_small = ParagraphStyle('Small', fontSize=7, leading=9)
+    style_small = ParagraphStyle('Small', fontSize=8, leading=10)
+    
+    # Estilo específico para que el título "FACTURA" se vea grande y centrado en su celda
+    style_titulo_cbte = ParagraphStyle('TituloCbte', fontSize=14, leading=16, alignment=TA_CENTER, fontName='Helvetica-Bold')
 
     story = []
 
@@ -139,78 +142,78 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
     ]))
     story.append(encabezado)
-    story.append(Spacer(1, 2*mm))
-
-    # ===================== LOGO =====================
+    # Sin espacio entre "Original" y el bloque principal para que se toquen o estén cerca
+    
+    # ===================== LOGO Y DATOS EMISOR (Columna Izquierda) =====================
     try:
-        logo = RLImage(logo_path, width=20*mm, height=20*mm)
+        logo = RLImage(logo_path, width=25*mm, height=25*mm)
     except:
         logo = Paragraph("<b>LOGO</b>", style_normal)
 
-    # ===================== EMISOR =====================
     col_emisor = Table([
         [logo],
-        [Paragraph(
-            f"<b>{emisor['razon_social']}</b><br/><br/>"
-            f"<b>Razón Social:</b> {emisor['razon_social']}<br/>"
-            f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/>"
-            f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}",
-            style_small
-        )]
-    ], colWidths=[85*mm], rowHeights=[20*mm, None])
+        [Paragraph(f"<b>{emisor['razon_social']}</b>", style_normal)],
+        [Paragraph(f"<b>Razón Social:</b> {emisor['razon_social']}<br/>"
+                   f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/>"
+                   f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}", style_small)]
+    ], colWidths=[80*mm])
+    col_emisor.setStyle(TableStyle([('LEFTPADDING', (0, 0), (-1, -1), 5)]))
 
-    # ===================== CUADRADO CENTRAL AFIP =====================
+    # ===================== CUADRADO CENTRAL (Letra C) =====================
     codigo_cbte = "013" if es_nota_credito else "011"
-
+    letra_cbte = "C"
+    
     col_letra = Table([
-        [Paragraph("<para align=center><b><font size=28>C</font></b></para>", style_normal)],
-        [Paragraph(f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>", style_normal)]
-    ], colWidths=[20*mm], rowHeights=[14*mm, 6*mm])
+        [Paragraph(f"<b>{letra_cbte}</b>", ParagraphStyle('Letra', fontSize=24, alignment=TA_CENTER))],
+        [Paragraph(f"COD. {codigo_cbte}", ParagraphStyle('Cod', fontSize=8, alignment=TA_CENTER))]
+    ], colWidths=[16*mm], rowHeights=[12*mm, 6*mm])
 
     col_letra.setStyle(TableStyle([
-        ('BOX', (0, 0), (-1, -1), 1.5, colors.black),
-        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.white), # Fondo blanco para tapar la línea vertical
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
     ]))
 
-    # ===================== FACTURA =====================
-    titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
+    # ===================== DATOS COMPROBANTE (Columna Derecha) =====================
+    titulo_texto = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
+    
+    col_factura_content = [
+        Paragraph(titulo_texto, style_titulo_cbte),
+        Spacer(1, 4*mm),
+        Paragraph(f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)} &nbsp;&nbsp; <b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}", style_small),
+        Paragraph(f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}", style_small),
+        Spacer(1, 2*mm),
+        Paragraph(f"<b>CUIT:</b> {cuit_emisor}", style_small),
+        Paragraph(f"<b>Ingresos Brutos:</b> {emisor['ingresos_brutos']}", style_small),
+        Paragraph(f"<b>Fecha de Inicio de Actividades:</b> {emisor['inicio_actividades']}", style_small),
+    ]
 
-    col_factura = Paragraph(
-        f"<b><font size=11>{titulo_cbte}</font></b><br/><br/>"
-        f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)}  "
-        f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
-        f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
-        f"<b>CUIT:</b> {cuit_emisor}<br/>"
-        f"<b>Ingresos Brutos:</b> {emisor['ingresos_brutos']}<br/>"
-        f"<b>Fecha de Inicio de Actividades:</b> {emisor['inicio_actividades']}",
-        style_small
-    )
-
-    # ===================== BLOQUE PRINCIPAL AFIP =====================
+    # ===================== BLOQUE PRINCIPAL (UNIÓN DE TODO) =====================
+    # Aquí definimos la estructura: [Emisor, Espacio para Letra, Factura]
+    # Usamos una línea divisoria (LINEBEFORE) en la posición de la letra
+    
     bloque_principal = Table(
-        [[col_emisor, col_letra, col_factura]],
-        colWidths=[80*mm, 20*mm, 80*mm]
+        [[col_emisor, col_letra, col_factura_content]],
+        colWidths=[82*mm, 16*mm, 82*mm]
     )
 
     bloque_principal.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('LINEAFTER', (0, 0), (0, 0), 1.2, colors.black),
+        # Esta es la línea vertical central:
+        ('LINEBEFORE', (1, 0), (1, 0), 1, colors.black), 
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 5),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (1, 0), (1, 0), -1), # Sube el cuadrito de la C para que pegue arriba
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('RIGHTPADDING', (2, 0), (2, 0), 5),
     ]))
 
     story.append(bloque_principal)
     story.append(Spacer(1, 2*mm))
 
+    # --- El resto del código (Período, Receptor, Productos) sigue igual ---
+    # (Manten tus secciones de Período, Receptor, Productos, Totales y Footer aquí debajo)
     # ===================== PERÍODO =====================
     periodo_table = Table([[
         Paragraph(
