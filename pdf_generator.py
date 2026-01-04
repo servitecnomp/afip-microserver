@@ -140,65 +140,54 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     
     # ===== BLOQUE PRINCIPAL: 3 COLUMNAS =====
     try:
-        logo = RLImage(logo_path, width=25*mm, height=25*mm)
+        logo = RLImage(logo_path, width=20*mm, height=20*mm)
     except:
         logo = Paragraph("<b>LOGO</b>", style_normal)
     
-    # Columna 1: Logo + Emisor
-    emisor_con_logo = [
-        [logo],
-        [Paragraph(f"<b>{emisor['razon_social']}</b>", style_small)],
-        [Paragraph("", style_small)],  # Espacio
-        [Paragraph(f"<b>Razón Social:</b> {emisor['razon_social']}", style_small)],
-        [Paragraph(f"<b>Domicilio Comercial:</b> {emisor['domicilio']}", style_small)],
-        [Paragraph(f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}", style_small)]
-    ]
+    # Columna 1: Emisor con logo (estructura simple anidada)
+    col_emisor = Paragraph(
+        f"<b>{emisor['razon_social']}</b><br/><br/>"
+        f"<b>Razón Social:</b> {emisor['razon_social']}<br/>"
+        f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/>"
+        f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}",
+        style_small
+    )
     
-    col_emisor = Table(emisor_con_logo, colWidths=[60*mm])
-    col_emisor.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (0, 0), 'CENTER'),  # Logo centrado
-        ('ALIGN', (0, 1), (0, -1), 'LEFT'),   # Texto a la izquierda
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-    ]))
-    
-    # Columna 2: Letra C con cuadrado SEMI-ABIERTO (formato AFIP)
-    # La C tiene borde solo arriba, izquierda y derecha
-    # El COD está FUERA del cuadrado, abajo
+    # Columna 2: Letra C (arriba) y COD (abajo) - SEPARADOS EN DOS FILAS
     codigo_cbte = "013" if es_nota_credito else "011"
     
-    # Sub-tabla para la C (parte superior con borde)
-    letra_c = Table([
-        [Paragraph(f"<para align=center><b><font size=42>C</font></b></para>", style_normal)]
-    ], colWidths=[23*mm], rowHeights=[20*mm])
+    # Fila superior: Solo la C (con cuadrado)
+    letra_c = Paragraph(
+        "<para align=center><b><font size=28>C</font></b></para>",
+        style_normal
+    )
     
-    letra_c.setStyle(TableStyle([
-        ('BOX', (0, 0), (0, 0), 2, colors.black),  # Cuadrado completo temporalmente
-        ('LINEBELOW', (0, 0), (0, 0), 0, colors.white),  # ELIMINAR línea inferior (semi-abierto)
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
-    ]))
+    # Fila inferior: Solo el código (sin cuadrado)
+    codigo_solo = Paragraph(
+        f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>",
+        style_normal
+    )
     
-    # Código debajo (FUERA del cuadrado)
-    codigo = Paragraph(f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>", style_normal)
-    
-    # Combinar C + código en columna vertical
+    # Combinar en tabla vertical con 2 filas
     col_letra = Table([
         [letra_c],
-        [codigo]
-    ], colWidths=[23*mm], rowHeights=[20*mm, 6*mm])
+        [codigo_solo]
+    ], colWidths=[25*mm], rowHeights=[18*mm, 8*mm])
     
     col_letra.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (0, 0), 'BOTTOM'),
+        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
         ('VALIGN', (0, 1), (0, 1), 'TOP'),
-        ('TOPPADDING', (0, 1), (0, 1), 1),
+        ('BOX', (0, 0), (0, 0), 1.5, colors.black),  # Cuadrado SOLO alrededor de la C
+        ('TOPPADDING', (0, 0), (0, 0), 0),
         ('BOTTOMPADDING', (0, 0), (0, 0), 0),
+        ('TOPPADDING', (0, 1), (0, 1), 1),
     ]))
     
-    # Columna 3: Datos de factura/NC
+    # Columna 3: Datos de factura/NC con título dinámico
     titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
     col_factura = Paragraph(
-        f"<b><font size=14>{titulo_cbte}</font></b><br/><br/>"
+        f"<b><font size=11>{titulo_cbte}</font></b><br/><br/>"
         f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)}  "
         f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
         f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
@@ -208,10 +197,9 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         style_small
     )
     
-    # Tabla principal con 3 columnas
-    # IMPORTANTE: La línea vertical debe empezar desde la MITAD (donde termina la C)
+    # Tabla principal con logo en esquina superior izquierda
     bloque_principal = Table([
-        [col_emisor, col_letra, col_factura]
+        [Table([[logo], [col_emisor]], colWidths=[20*mm], rowHeights=[20*mm, None]), col_letra, col_factura]
     ], colWidths=[65*mm, 25*mm, 90*mm])
     
     bloque_principal.setStyle(TableStyle([
@@ -219,19 +207,13 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('ALIGN', (1, 0), (1, 0), 'CENTER'),
         ('ALIGN', (2, 0), (2, 0), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOX', (0, 0), (-1, -1), 1.5, colors.black),  # Borde exterior
-        ('LINEAFTER', (0, 0), (0, 0), 1.5, colors.black),  # Línea vertical después col 1
-        ('LINEAFTER', (1, 0), (1, 0), 1.5, colors.black),  # Línea vertical después col 2
-        ('TOPPADDING', (0, 0), (0, 0), 8),
-        ('TOPPADDING', (1, 0), (1, 0), 8),
-        ('TOPPADDING', (2, 0), (2, 0), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (0, 0), 5),
-        ('LEFTPADDING', (1, 0), (1, 0), 0),  # Sin padding para que C quede centrada
-        ('RIGHTPADDING', (1, 0), (1, 0), 0),  # Sin padding para que C quede centrada
-        ('LEFTPADDING', (2, 0), (2, 0), 8),
-        ('RIGHTPADDING', (0, 0), (0, 0), 5),
-        ('RIGHTPADDING', (2, 0), (2, 0), 5),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),  # Borde exterior
+        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # Línea después col 1
+        # NO ponemos LINEAFTER en col 2 porque la línea sale del cuadrado de la C
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
     ]))
     
     story.append(bloque_principal)
