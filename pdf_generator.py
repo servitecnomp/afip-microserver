@@ -153,14 +153,14 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         style_small
     )
     
-    # Columna 2: Letra C con código dinámico (en CUADRADO)
+    # Columna 2: Letra C con código dinámico (en CUADRADO 20mm x 20mm)
     codigo_cbte = "013" if es_nota_credito else "011"
     
-    # Crear tabla cuadrada para C+COD
+    # Crear tabla cuadrada para C+COD (20mm x 20mm)
     col_letra = Table([
         [Paragraph("<para align=center><b><font size=28>C</font></b></para>", style_normal)],
         [Paragraph(f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>", style_normal)]
-    ], colWidths=[25*mm], rowHeights=[18*mm, 7*mm])
+    ], colWidths=[20*mm], rowHeights=[14*mm, 6*mm])  # 14+6 = 20mm
     
     col_letra.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -196,7 +196,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     
     bloque_principal = Table([
         [tabla_emisor, col_letra, col_factura]
-    ], colWidths=[65*mm, 25*mm, 90*mm])
+    ], colWidths=[65*mm, 20*mm, 95*mm])  # Columna del medio: 20mm para cuadrado
     
     bloque_principal.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
@@ -204,8 +204,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('ALIGN', (2, 0), (2, 0), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),  # Borde exterior
-        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # Línea después de col 1
-        # El cuadrado de C+COD ya tiene su propio borde (en la tabla interna)
+        # Sin línea vertical después de col 1 - eliminada
         ('TOPPADDING', (0, 0), (-1, -1), 5),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('LEFTPADDING', (0, 0), (-1, -1), 5),
