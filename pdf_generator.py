@@ -195,7 +195,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     # ===================== BLOQUE PRINCIPAL AFIP =====================
     bloque_principal = Table(
         [[col_emisor, col_letra, col_factura]],
-        colWidths=[85*mm, 10*mm, 85*mm]
+        colWidths=[80*mm, 20*mm, 80*mm]
     )
 
     bloque_principal.setStyle(TableStyle([
