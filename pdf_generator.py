@@ -6,6 +6,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 import os
 
 # Datos de los emisores
@@ -296,10 +297,11 @@ def crear_pdf_factura(datos, logo_path, output_path):
     qr_img.save(buffer, format='PNG')
     buffer.seek(0)
     
-    # Dibujar QR en el PDF
+    # Dibujar QR en el PDF usando ImageReader
     qr_x = margin
     qr_y = 30*mm
-    c.drawImage(buffer, qr_x, qr_y, width=35*mm, height=35*mm)
+    # Envolver el BytesIO con ImageReader para que ReportLab lo maneje correctamente
+    c.drawImage(ImageReader(buffer), qr_x, qr_y, width=35*mm, height=35*mm)
     
     # ================================================================
     # CAE y AUTORIZACIÓN
