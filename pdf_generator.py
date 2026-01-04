@@ -161,20 +161,38 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
     
-    # Columna 2: Letra C dentro de un CUADRADO (como AFIP)
+    # Columna 2: Letra C con cuadrado SEMI-ABIERTO (formato AFIP)
+    # La C tiene borde solo arriba, izquierda y derecha
+    # El COD está FUERA del cuadrado, abajo
     codigo_cbte = "013" if es_nota_credito else "011"
     
-    # Crear tabla interna para el cuadrado de la C
-    cuadrado_c = Table([
-        [Paragraph(f"<para align=center><b><font size=40>C</font></b></para>", style_normal)],
-        [Paragraph(f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>", style_normal)]
-    ], colWidths=[22*mm], rowHeights=[18*mm, 8*mm])
+    # Sub-tabla para la C (parte superior con borde)
+    letra_c = Table([
+        [Paragraph(f"<para align=center><b><font size=42>C</font></b></para>", style_normal)]
+    ], colWidths=[23*mm], rowHeights=[20*mm])
     
-    cuadrado_c.setStyle(TableStyle([
-        ('BOX', (0, 0), (0, 0), 2, colors.black),  # Cuadrado alrededor de C
+    letra_c.setStyle(TableStyle([
+        ('BOX', (0, 0), (0, 0), 2, colors.black),  # Cuadrado completo temporalmente
+        ('LINEBELOW', (0, 0), (0, 0), 0, colors.white),  # ELIMINAR línea inferior (semi-abierto)
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
+    ]))
+    
+    # Código debajo (FUERA del cuadrado)
+    codigo = Paragraph(f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>", style_normal)
+    
+    # Combinar C + código en columna vertical
+    col_letra = Table([
+        [letra_c],
+        [codigo]
+    ], colWidths=[23*mm], rowHeights=[20*mm, 6*mm])
+    
+    col_letra.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (0, 0), 'BOTTOM'),
         ('VALIGN', (0, 1), (0, 1), 'TOP'),
+        ('TOPPADDING', (0, 1), (0, 1), 1),
+        ('BOTTOMPADDING', (0, 0), (0, 0), 0),
     ]))
     
     # Columna 3: Datos de factura/NC
@@ -190,9 +208,10 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         style_small
     )
     
-    # Tabla principal con 3 columnas y líneas verticales claras
+    # Tabla principal con 3 columnas
+    # IMPORTANTE: La línea vertical debe empezar desde la MITAD (donde termina la C)
     bloque_principal = Table([
-        [col_emisor, cuadrado_c, col_factura]
+        [col_emisor, col_letra, col_factura]
     ], colWidths=[65*mm, 25*mm, 90*mm])
     
     bloque_principal.setStyle(TableStyle([
@@ -203,11 +222,13 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('BOX', (0, 0), (-1, -1), 1.5, colors.black),  # Borde exterior
         ('LINEAFTER', (0, 0), (0, 0), 1.5, colors.black),  # Línea vertical después col 1
         ('LINEAFTER', (1, 0), (1, 0), 1.5, colors.black),  # Línea vertical después col 2
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (0, 0), 8),
+        ('TOPPADDING', (1, 0), (1, 0), 8),
+        ('TOPPADDING', (2, 0), (2, 0), 8),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
         ('LEFTPADDING', (0, 0), (0, 0), 5),
-        ('LEFTPADDING', (1, 0), (1, 0), 1),  # Menos padding en col C
-        ('RIGHTPADDING', (1, 0), (1, 0), 1),  # Menos padding en col C
+        ('LEFTPADDING', (1, 0), (1, 0), 0),  # Sin padding para que C quede centrada
+        ('RIGHTPADDING', (1, 0), (1, 0), 0),  # Sin padding para que C quede centrada
         ('LEFTPADDING', (2, 0), (2, 0), 8),
         ('RIGHTPADDING', (0, 0), (0, 0), 5),
         ('RIGHTPADDING', (2, 0), (2, 0), 5),
