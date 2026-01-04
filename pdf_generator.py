@@ -153,13 +153,25 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         style_small
     )
     
-    # Columna 2: Letra C con código dinámico (JUNTOS dentro del cuadrado)
+    # Columna 2: Letra C con código dinámico (en CUADRADO)
     codigo_cbte = "013" if es_nota_credito else "011"
-    col_letra = Paragraph(
-        "<para align=center><b><font size=28>C</font></b><br/>"
-        f"<font size=8>COD. {codigo_cbte}</font></para>",
-        style_normal
-    )
+    
+    # Crear tabla cuadrada para C+COD
+    col_letra = Table([
+        [Paragraph("<para align=center><b><font size=28>C</font></b></para>", style_normal)],
+        [Paragraph(f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>", style_normal)]
+    ], colWidths=[25*mm], rowHeights=[18*mm, 7*mm])
+    
+    col_letra.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
+        ('VALIGN', (0, 1), (0, 1), 'TOP'),
+        ('BOX', (0, 0), (-1, -1), 1.5, colors.black),  # CUADRADO alrededor de toda la tabla
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
     
     # Columna 3: Datos de factura/NC con título dinámico
     titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
@@ -193,8 +205,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),  # Borde exterior
         ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # Línea después de col 1
-        ('BOX', (1, 0), (1, 0), 1.5, colors.black),  # CUADRADO solo alrededor de C+COD
-        # NO ponemos LINEAFTER en (1,0) porque el borde derecho del cuadrado ya es la línea
+        # El cuadrado de C+COD ya tiene su propio borde (en la tabla interna)
         ('TOPPADDING', (0, 0), (-1, -1), 5),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('LEFTPADDING', (0, 0), (-1, -1), 5),
