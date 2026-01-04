@@ -5,9 +5,23 @@ from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
-import os
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+
+# Mapeo de compañías (fallback)
+COMPANIAS = {
+    "30500031132": {
+        "razon_social": "MERCANTIL ANDINA SEGUROS S.A.",
+        "domicilio": "Av. San Juan 550, CABA",
+        "condicion_iva": "IVA Responsable Inscripto"
+    },
+    "20226717871": {
+        "razon_social": "LA SEGUNDA COOPERATIVA LIMITADA",
+        "domicilio": "Juan Manuel De Rosas 957 - Rosario Norte, Santa Fe",
+        "condicion_iva": "IVA Responsable Inscripto"
+    }
+}
 
 # Datos de los emisores
 EMISOR_DATA = {
@@ -27,310 +41,267 @@ EMISOR_DATA = {
     }
 }
 
-def crear_pdf_factura(datos, logo_path, output_path):
-    """
-    Genera un PDF de factura o nota de crédito.
+def formatear_vencimiento_cae(vencimiento_str):
+    """Convierte AAAAMMDD a DD/MM/AAAA"""
+    if len(vencimiento_str) == 8:
+        anio = vencimiento_str[0:4]
+        mes = vencimiento_str[4:6]
+        dia = vencimiento_str[6:8]
+        return f"{dia}/{mes}/{anio}"
+    return vencimiento_str
+
+def generar_qr_afip(datos_factura):
+    """Genera código QR según especificaciones AFIP RG 5198/2022"""
     
-    datos: diccionario con los datos del comprobante
-    logo_path: ruta al logo
-    output_path: donde guardar el PDF
-    """
-    
-    # VERIFICACIONES DEFENSIVAS
-    print(f"PDF GENERATOR - Iniciando")
-    print(f"  output_path: {output_path} (tipo: {type(output_path)})")
-    print(f"  logo_path: {logo_path} (tipo: {type(logo_path)})")
-    
-    # Asegurar que output_path sea string
-    if not isinstance(output_path, str):
-        print(f"  WARN: output_path no es string, convirtiendo...")
-        output_path = str(output_path)
-    
-    # Verificar y sanitizar logo_path
-    if logo_path is not None:
-        from io import BytesIO
-        if isinstance(logo_path, (BytesIO, bytes)):
-            print(f"  WARN: logo_path es {type(logo_path)}, usando None")
-            logo_path = None
-        elif not isinstance(logo_path, str):
-            print(f"  WARN: logo_path no es string, convirtiendo...")
-            logo_path = str(logo_path)
-        
-        if logo_path and not os.path.exists(logo_path):
-            print(f"  WARN: Logo no existe en {logo_path}")
-            logo_path = None
-    
-    # Extraer datos
-    cuit_emisor = str(datos.get("cuit_emisor", ""))
-    cuit_receptor = str(datos.get("cuit_receptor", ""))
-    punto_venta = int(datos.get("punto_venta", 2))
-    tipo_cbte = int(datos.get("tipo_cbte", 11))
-    cbte_nro = int(datos.get("cbte_nro", 0))
-    fecha_emision = datos.get("fecha_emision")
-    cae = str(datos.get("cae", ""))
-    vencimiento_cae_raw = datos.get("vencimiento_cae", "")
-    importe = float(datos.get("importe", 0))
-    descripcion = datos.get("descripcion", "")
-    compania = datos.get("compania", "")
-    domicilio = datos.get("domicilio", "")
-    condicion_iva = datos.get("condicion_iva", "")
-    nombre_asegurado = datos.get("nombre_asegurado", "")
-    
-    # Determinar si es NC
-    es_nota_credito = (tipo_cbte == 13)
-    
-    # Formatear fecha de emisión
-    if hasattr(fecha_emision, 'strftime'):
-        fecha_emision = fecha_emision.strftime("%d/%m/%Y")
-    
-    # Formatear vencimiento CAE
-    if vencimiento_cae_raw and len(str(vencimiento_cae_raw)) == 8:
-        venc_str = str(vencimiento_cae_raw)
-        vencimiento_cae = f"{venc_str[6:8]}/{venc_str[4:6]}/{venc_str[0:4]}"
-    else:
-        vencimiento_cae = str(vencimiento_cae_raw)
-    
-    # Obtener datos del emisor
-    emisor_info = EMISOR_DATA.get(cuit_emisor, {})
-    razon_social_emisor = emisor_info.get("razon_social", "")
-    domicilio_emisor = emisor_info.get("domicilio", "")
-    iibb_emisor = emisor_info.get("ingresos_brutos", "")
-    inicio_actividades = emisor_info.get("inicio_actividades", "")
-    condicion_iva_emisor = emisor_info.get("condicion_iva", "")
-    
-    # Crear PDF
-    c = canvas.Canvas(output_path, pagesize=A4)
-    width, height = A4
-    margin = 20 * mm
-    
-    # ================================================================
-    # ENCABEZADO
-    # ================================================================
-    
-    # Logo (arriba izquierda)
-    if logo_path and os.path.exists(logo_path):
-        try:
-            c.drawImage(logo_path, margin, height - 40*mm, width=30*mm, height=30*mm, preserveAspectRatio=True, mask='auto')
-        except Exception as e:
-            print(f"  WARN: Error al dibujar logo: {e}")
-    
-    # Letra "C" en el centro (bajada 4mm)
-    c.setFont("Helvetica-Bold", 40)
-    letra_x = width / 2 - 10*mm
-    letra_y = height - 32*mm
-    
-    # LÍNEA VERTICAL DIVISORIA
-    linea_vertical_x = width / 2
-    c.setStrokeColor(colors.black)
-    c.setLineWidth(1.5)
-    c.line(linea_vertical_x, height - 8*mm, linea_vertical_x, letra_y + 20*mm + 2*mm)
-    c.line(linea_vertical_x, letra_y - 2*mm, linea_vertical_x, height - 79*mm)
-    
-    # Cuadro para la letra C
-    c.setStrokeColor(colors.black)
-    c.setLineWidth(1.5)
-    c.rect(letra_x, letra_y, 20*mm, 20*mm)
-    
-    # Letra C
-    c.drawCentredString(letra_x + 10*mm, letra_y + 5*mm, "C")
-    
-    # COD. 011 o 013
-    codigo_cbte = "011" if not es_nota_credito else "013"
-    c.setFont("Helvetica", 8)
-    c.drawCentredString(letra_x + 10*mm, letra_y + 2*mm, f"COD. {codigo_cbte}")
-    
-    # FACTURA o NOTA DE CRÉDITO arriba
-    titulo_cbte = "FACTURA" if not es_nota_credito else "NOTA DE CRÉDITO"
-    c.setFont("Helvetica", 12 if not es_nota_credito else 10)
-    c.drawCentredString(letra_x + 10*mm, letra_y + 22*mm, titulo_cbte)
-    
-    # ================================================================
-    # DATOS DEL EMISOR (Izquierda)
-    # ================================================================
-    
-    emisor_x = margin
-    emisor_y = height - 45*mm
-    
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(emisor_x, emisor_y, razon_social_emisor)
-    
-    emisor_y -= 5*mm
-    c.setFont("Helvetica", 9)
-    c.drawString(emisor_x, emisor_y, domicilio_emisor)
-    
-    emisor_y -= 5*mm
-    c.drawString(emisor_x, emisor_y, condicion_iva_emisor)
-    
-    # ================================================================
-    # DATOS FISCALES (Derecha)
-    # ================================================================
-    
-    fiscal_x = width / 2 + 5*mm
-    fiscal_y = height - 45*mm
-    
-    c.setFont("Helvetica", 9)
-    c.drawString(fiscal_x, fiscal_y, f"Punto de Venta: {str(punto_venta).zfill(4)}  Comp. Nro: {str(cbte_nro).zfill(8)}")
-    
-    fiscal_y -= 5*mm
-    c.drawString(fiscal_x, fiscal_y, f"Fecha de Emisión: {fecha_emision}")
-    
-    fiscal_y -= 5*mm
-    c.drawString(fiscal_x, fiscal_y, f"CUIT: {cuit_emisor}")
-    
-    fiscal_y -= 5*mm
-    c.drawString(fiscal_x, fiscal_y, f"Ingresos Brutos: {iibb_emisor}")
-    
-    fiscal_y -= 5*mm
-    c.drawString(fiscal_x, fiscal_y, f"Fecha de Inicio de Actividades: {inicio_actividades}")
-    
-    # ================================================================
-    # SEPARADOR
-    # ================================================================
-    
-    separador_y_pos = height - 79*mm
-    c.setStrokeColor(colors.black)
-    c.setLineWidth(1.5)
-    c.line(margin, separador_y_pos, width - margin, separador_y_pos)
-    
-    # ================================================================
-    # DATOS DEL RECEPTOR
-    # ================================================================
-    
-    receptor_y = separador_y_pos - 10*mm
-    
-    # Si es NC, mostrar "ANULA FACTURA" en rojo
-    if es_nota_credito:
-        cbte_asoc_nro = datos.get("cbte_asoc_nro", "")
-        cbte_asoc_pto_vta = datos.get("cbte_asoc_pto_vta", punto_venta)
-        c.setFont("Helvetica-Bold", 9)
-        c.setFillColor(colors.red)
-        c.drawString(margin, receptor_y, f"ANULA FACTURA Nº {str(cbte_asoc_pto_vta).zfill(4)}-{str(cbte_asoc_nro).zfill(8)}")
-        receptor_y -= 7*mm
-        c.setFillColor(colors.black)
-    
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(margin, receptor_y, "DATOS DEL RECEPTOR")
-    
-    receptor_y -= 6*mm
-    c.setFont("Helvetica", 9)
-    c.drawString(margin, receptor_y, f"Razón Social: {compania}")
-    
-    receptor_y -= 5*mm
-    c.drawString(margin, receptor_y, f"Domicilio: {domicilio}")
-    
-    receptor_y -= 5*mm
-    c.drawString(margin, receptor_y, f"CUIT: {cuit_receptor}")
-    
-    receptor_y -= 5*mm
-    c.drawString(margin, receptor_y, f"Condición IVA: {condicion_iva}")
-    
-    if nombre_asegurado:
-        receptor_y -= 5*mm
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(margin, receptor_y, f"Asegurado: {nombre_asegurado}")
-    
-    # ================================================================
-    # DETALLE
-    # ================================================================
-    
-    detalle_y = receptor_y - 12*mm
-    
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(margin, detalle_y, "DETALLE")
-    
-    detalle_y -= 6*mm
-    c.setFont("Helvetica", 9)
-    c.drawString(margin, detalle_y, descripcion)
-    
-    # ================================================================
-    # TOTALES
-    # ================================================================
-    
-    totales_y = 100*mm
-    totales_x = width - margin - 50*mm
-    
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(totales_x, totales_y, "Subtotal: $")
-    c.drawRightString(width - margin, totales_y, f"{importe:,.2f}")
-    
-    totales_y -= 5*mm
-    c.drawRightString(totales_x, totales_y, "Importe Otros Tributos: $")
-    c.drawRightString(width - margin, totales_y, "0,00")
-    
-    totales_y -= 5*mm
-    c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(totales_x, totales_y, "Importe Total: $")
-    c.drawRightString(width - margin, totales_y, f"{importe:,.2f}")
-    
-    # ================================================================
-    # CÓDIGO QR
-    # ================================================================
+    cuit_emisor = str(datos_factura["cuit_emisor"]).replace("-", "")
+    cuit_receptor = str(datos_factura["cuit_receptor"]).replace("-", "")
     
     qr_data = {
         "ver": 1,
-        "fecha": fecha_emision.replace("/", ""),
+        "fecha": datos_factura["fecha_emision"].strftime("%Y-%m-%d"),
         "cuit": int(cuit_emisor),
-        "ptoVta": int(punto_venta),
-        "tipoCmp": tipo_cbte,
-        "nroCmp": int(cbte_nro),
-        "importe": importe,
+        "ptoVta": int(datos_factura["punto_venta"]),
+        "tipoCmp": int(datos_factura["tipo_cbte"]),
+        "nroCmp": int(datos_factura["cbte_nro"]),
+        "importe": float(datos_factura["importe"]),
         "moneda": "PES",
         "ctz": 1,
-        "tipoDocRec": 96 if len(cuit_receptor) <= 8 else 80,
-        "nroDocRec": int(cuit_receptor) if cuit_receptor else 0,
+        "tipoDocRec": 80,
+        "nroDocRec": int(cuit_receptor),
         "tipoCodAut": "E",
-        "codAut": int(cae) if cae else 0
+        "codAut": int(datos_factura["cae"])
     }
     
     qr_json = json.dumps(qr_data, separators=(',', ':'))
-    qr_url = f"https://www.afip.gob.ar/fe/qr/?p={qr_json}"
+    qr_base64 = base64.b64encode(qr_json.encode()).decode()
+    qr_url = f"https://www.afip.gob.ar/fe/qr/?p={qr_base64}"
     
-    # Generar código QR
-    qr = qrcode.QRCode(version=1, box_size=3, border=1)
+    qr = qrcode.QRCode(version=1, box_size=10, border=1)
     qr.add_data(qr_url)
     qr.make(fit=True)
     
-    qr_img = qr.make_image(fill_color="black", back_color="white")
-    
-    # Convertir a BytesIO
+    img = qr.make_image(fill_color="black", back_color="white")
     buffer = BytesIO()
-    qr_img.save(buffer, format='PNG')
+    img.save(buffer, format='PNG')
     buffer.seek(0)
     
-    # Dibujar QR en el PDF usando ImageReader
-    qr_x = margin
-    qr_y = 30*mm
-    # Envolver el BytesIO con ImageReader para que ReportLab lo maneje correctamente
-    c.drawImage(ImageReader(buffer), qr_x, qr_y, width=35*mm, height=35*mm)
+    return buffer
+
+def crear_pdf_factura(datos_factura, logo_path, output_path):
+    """Crea un PDF de factura con formato AFIP mejorado"""
     
-    # ================================================================
-    # CAE y AUTORIZACIÓN
-    # ================================================================
+    cuit_emisor = str(datos_factura["cuit_emisor"]).replace("-", "").replace(" ", "")
+    cuit_receptor = str(datos_factura["cuit_receptor"]).replace("-", "").replace(" ", "")
+    fecha_emision = datos_factura["fecha_emision"]
+    vencimiento_cae = formatear_vencimiento_cae(str(datos_factura["vencimiento_cae"]))
     
-    info_x = width - margin - 70*mm
-    info_y = 55*mm
+    emisor = EMISOR_DATA.get(cuit_emisor, EMISOR_DATA["27239676931"])
     
-    c.setFont("Helvetica", 8)
-    c.drawRightString(width - margin - 35*mm, info_y, "Pág. 1/1")
+    # Obtener datos del receptor dinámicamente
+    if datos_factura.get("compania"):
+        receptor = {
+            "razon_social": datos_factura.get("compania", "Cliente"),
+            "domicilio": datos_factura.get("domicilio", ""),
+            "condicion_iva": datos_factura.get("condicion_iva", "IVA Responsable Inscripto")
+        }
+    else:
+        receptor = COMPANIAS.get(cuit_receptor, {
+            "razon_social": "Cliente",
+            "domicilio": "",
+            "condicion_iva": "IVA Responsable Inscripto"
+        })
     
-    info_y -= 8*mm
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(info_x, info_y, f"CAE N°: {cae}")
+    qr_buffer = generar_qr_afip(datos_factura)
     
-    info_y -= 5*mm
-    c.drawString(info_x, info_y, f"Fecha de Vto. de CAE: {vencimiento_cae}")
+    doc = SimpleDocTemplate(output_path, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=10*mm, bottomMargin=10*mm)
     
-    info_y -= 8*mm
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(info_x, info_y, "Comprobante Autorizado")
+    styles = getSampleStyleSheet()
+    style_normal = ParagraphStyle('Normal', fontSize=8, leading=10)
+    style_small = ParagraphStyle('Small', fontSize=7, leading=9)
     
-    info_y -= 5*mm
-    c.setFont("Helvetica", 7)
-    c.drawString(info_x, info_y, "Esta Agencia no se responsabiliza por los")
-    info_y -= 3*mm
-    c.drawString(info_x, info_y, "datos contenidos en la presente factura.")
+    story = []
     
-    # Guardar PDF
-    c.save()
+    # ===== ENCABEZADO ORIGINAL =====
+    encabezado = Table([["ORIGINAL"]], colWidths=[180*mm])
+    encabezado.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    story.append(encabezado)
+    story.append(Spacer(1, 2*mm))
     
+    # ===== BLOQUE PRINCIPAL: 3 COLUMNAS =====
+    try:
+        logo = RLImage(logo_path, width=20*mm, height=20*mm)
+    except:
+        logo = Paragraph("<b>LOGO</b>", style_normal)
+    
+    # Columna 1: Emisor con logo
+    col_emisor = Paragraph(
+        f"<b>{emisor['razon_social']}</b><br/><br/>"
+        f"<b>Razón Social:</b> {emisor['razon_social']}<br/>"
+        f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/>"
+        f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}",
+        style_small
+    )
+    
+    # Columna 2: Letra C
+    col_letra = Paragraph(
+        "<para align=center><b><font size=28>C</font></b><br/>"
+        "<font size=8>COD. 011</font></para>",
+        style_normal
+    )
+    
+    # Columna 3: Datos de factura
+    col_factura = Paragraph(
+        f"<b><font size=11>FACTURA</font></b><br/><br/>"
+        f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)}  "
+        f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
+        f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
+        f"<b>CUIT:</b> {cuit_emisor}<br/>"
+        f"<b>Ingresos Brutos:</b> {emisor['ingresos_brutos']}<br/>"
+        f"<b>Fecha de Inicio de Actividades:</b> {emisor['inicio_actividades']}",
+        style_small
+    )
+    
+    # Tabla principal con logo en esquina superior izquierda
+    bloque_principal = Table([
+        [Table([[logo], [col_emisor]], colWidths=[20*mm], rowHeights=[20*mm, None]), col_letra, col_factura]
+    ], colWidths=[65*mm, 25*mm, 90*mm])
+    
+    bloque_principal.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('ALIGN', (2, 0), (2, 0), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),
+        ('LINEAFTER', (1, 0), (1, 0), 2, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    
+    story.append(bloque_principal)
+    story.append(Spacer(1, 2*mm))
+    
+    # ===== PERÍODO FACTURADO =====
+    periodo_table = Table([[
+        Paragraph(f"<b>Período Facturado Desde:</b> {fecha_emision.strftime('%d/%m/%Y')}  "
+                 f"<b>Hasta:</b> {fecha_emision.strftime('%d/%m/%Y')}  "
+                 f"<b>Fecha de Vto. para el pago:</b> {fecha_emision.strftime('%d/%m/%Y')}", style_small)
+    ]], colWidths=[180*mm])
+    
+    periodo_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    
+    story.append(periodo_table)
+    story.append(Spacer(1, 2*mm))
+    
+    # ===== DATOS DEL RECEPTOR =====
+    receptor_table = Table([[
+        Paragraph(
+            f"<b>CUIT:</b> {cuit_receptor}<br/>"
+            f"<b>Apellido y Nombre / Razón Social:</b> {receptor['razon_social']}<br/>"
+            f"<b>Condición frente al IVA:</b> {receptor['condicion_iva']}<br/>"
+            f"<b>Domicilio:</b> {receptor['domicilio']}<br/>"
+            f"<b>Condición de venta:</b> Otra",
+            style_small
+        )
+    ]], colWidths=[180*mm])
+    
+    receptor_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    
+    story.append(receptor_table)
+    story.append(Spacer(1, 3*mm))
+    
+    # ===== TABLA DE PRODUCTOS =====
+    importe = float(datos_factura["importe"])
+    descripcion = datos_factura.get("descripcion", "Servicio")
+    
+    productos_data = [
+        [Paragraph("<b>Código</b>", style_small),
+         Paragraph("<b>Producto / Servicio</b>", style_small),
+         Paragraph("<b>Cantidad</b>", style_small),
+         Paragraph("<b>U. Medida</b>", style_small),
+         Paragraph("<b>Precio Unit.</b>", style_small),
+         Paragraph("<b>% Bonif</b>", style_small),
+         Paragraph("<b>Imp. Bonif.</b>", style_small),
+         Paragraph("<b>Subtotal</b>", style_small)],
+        ["", descripcion, "1,00", "unidades", f"{importe:,.2f}", "0,00", "0,00", f"{importe:,.2f}"]
+    ]
+    
+    productos_table = Table(productos_data, colWidths=[20*mm, 60*mm, 20*mm, 20*mm, 20*mm, 15*mm, 15*mm, 20*mm])
+    
+    productos_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (1, 1), (1, 1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    
+    story.append(productos_table)
+    story.append(Spacer(1, 3*mm))
+    
+    # ===== TOTALES =====
+    totales_table = Table([
+        ["", Paragraph("<b>Subtotal: $</b>", style_normal), f"{importe:,.2f}"],
+        ["", Paragraph("<b>Importe Otros Tributos: $</b>", style_normal), "0,00"],
+        ["", Paragraph("<b>Importe Total: $</b>", style_normal), f"{importe:,.2f}"]
+    ], colWidths=[100*mm, 60*mm, 20*mm])
+    
+    totales_table.setStyle(TableStyle([
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('LINEABOVE', (1, 0), (-1, 0), 1, colors.black),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    
+    story.append(totales_table)
+    story.append(Spacer(1, 5*mm))
+    
+    # ===== FOOTER CON QR Y CAE =====
+    qr_img = RLImage(qr_buffer, width=40*mm, height=40*mm)
+    
+    footer_table = Table([
+        [qr_img, "", 
+         Paragraph(
+             f"<para align=right>"
+             f"Pág. 1/1<br/><br/>"
+             f"<b>CAE N°:</b> {datos_factura['cae']}<br/>"
+             f"<b>Fecha de Vto. de CAE:</b> {vencimiento_cae}<br/><br/>"
+             f"<b>Comprobante Autorizado</b><br/>"
+             f"<font size=6>Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación</font>"
+             f"</para>",
+             style_small
+         )]
+    ], colWidths=[45*mm, 90*mm, 45*mm])
+    
+    footer_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    
+    story.append(footer_table)
+    
+    # Construir PDF
+    doc.build(story)
     print(f"PDF generado exitosamente: {output_path}")
