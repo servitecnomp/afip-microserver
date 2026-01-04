@@ -200,21 +200,13 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
 
 bloque_principal.setStyle(TableStyle([
     ('BOX', (0, 0), (-1, -1), 1, colors.black),
-
-    # Línea divisoria AFIP
     ('LINEAFTER', (0, 0), (0, 0), 1.2, colors.black),
-
     ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-
-    # ❌ SIN padding horizontal (CLAVE)
-    ('LEFTPADDING', (0, 0), (-1, -1), 0),
-    ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-
-    # Padding vertical mínimo
-    ('TOPPADDING', (0, 0), (-1, -1), 4),
-    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ('LEFTPADDING', (0, 0), (-1, -1), 5),
+    ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+    ('TOPPADDING', (0, 0), (-1, -1), 5),
+    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
 ]))
-
 
     story.append(bloque_principal)
     story.append(Spacer(1, 2*mm))
