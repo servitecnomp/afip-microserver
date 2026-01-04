@@ -107,11 +107,11 @@ def crear_pdf_factura(datos, logo_path, output_path):
     # ================================================================
     
     # Logo (arriba izquierda)
-    if os.path.exists(logo_path):
+    if logo_path and os.path.exists(logo_path):
         try:
             c.drawImage(logo_path, margin, height - 40*mm, width=30*mm, height=30*mm, preserveAspectRatio=True, mask='auto')
-        except:
-            pass
+        except Exception as e:
+            print(f"  WARN: Error al dibujar logo: {e}")
     
     # Letra "C" en el centro (bajada 4mm)
     c.setFont("Helvetica-Bold", 40)
