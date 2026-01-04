@@ -76,12 +76,18 @@ def load_cert(cuit):
 
 def create_tra(service="wsfe"):
     """Crea el TRA (Ticket de Requerimiento de Acceso)"""
+    # Usar UTC explícitamente y formato ISO con timezone
+    now = datetime.datetime.utcnow()
+    generation_time = now.strftime('%Y-%m-%dT%H:%M:%S.000-00:00')
+    expiration_time = (now + datetime.timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M:%S.000-00:00')
+    unique_id = int(now.timestamp())
+    
     tra = f"""<?xml version="1.0" encoding="UTF-8"?>
 <loginTicketRequest version="1.0">
   <header>
-    <uniqueId>{int(datetime.datetime.now().timestamp())}</uniqueId>
-    <generationTime>{datetime.datetime.now().isoformat()}</generationTime>
-    <expirationTime>{(datetime.datetime.now() + datetime.timedelta(hours=12)).isoformat()}</expirationTime>
+    <uniqueId>{unique_id}</uniqueId>
+    <generationTime>{generation_time}</generationTime>
+    <expirationTime>{expiration_time}</expirationTime>
   </header>
   <service>{service}</service>
 </loginTicketRequest>"""
@@ -124,8 +130,8 @@ def get_cached_token(cuit, cert_file, key_file):
         cached = TOKEN_CACHE[cuit]
         expiration = cached.get("expiration")
         
-        # Si el token expira en más de 30 minutos, reutilizarlo
-        if expiration and expiration > datetime.datetime.now() + datetime.timedelta(minutes=30):
+        # Si el token expira en más de 15 minutos, reutilizarlo
+        if expiration and expiration > datetime.datetime.utcnow() + datetime.timedelta(minutes=15):
             print(f"✓ Reutilizando token en caché para {cuit} (expira: {expiration})")
             return cached["token"], cached["sign"]
     
@@ -133,11 +139,11 @@ def get_cached_token(cuit, cert_file, key_file):
     print(f"Generando nuevo token para {cuit}...")
     token, sign = get_token(cert_file, key_file)
     
-    # Guardar en caché (tokens de AFIP duran 12 horas)
+    # Guardar en caché (tokens de AFIP duran 2 horas)
     TOKEN_CACHE[cuit] = {
         "token": token,
         "sign": sign,
-        "expiration": datetime.datetime.now() + datetime.timedelta(hours=12)
+        "expiration": datetime.datetime.utcnow() + datetime.timedelta(hours=2)
     }
     
     print(f"✓ Token generado y almacenado en caché")
