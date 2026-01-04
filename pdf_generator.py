@@ -153,36 +153,13 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         style_small
     )
     
-    # Columna 2: Letra C (arriba) y COD (abajo) - SEPARADOS EN DOS FILAS
+    # Columna 2: Letra C con código dinámico (JUNTOS dentro del cuadrado)
     codigo_cbte = "013" if es_nota_credito else "011"
-    
-    # Fila superior: Solo la C (con cuadrado)
-    letra_c = Paragraph(
-        "<para align=center><b><font size=28>C</font></b></para>",
+    col_letra = Paragraph(
+        "<para align=center><b><font size=28>C</font></b><br/>"
+        f"<font size=8>COD. {codigo_cbte}</font></para>",
         style_normal
     )
-    
-    # Fila inferior: Solo el código (sin cuadrado)
-    codigo_solo = Paragraph(
-        f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>",
-        style_normal
-    )
-    
-    # Combinar en tabla vertical con 2 filas
-    col_letra = Table([
-        [letra_c],
-        [codigo_solo]
-    ], colWidths=[25*mm], rowHeights=[18*mm, 8*mm])
-    
-    col_letra.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
-        ('VALIGN', (0, 1), (0, 1), 'TOP'),
-        ('BOX', (0, 0), (0, 0), 1.5, colors.black),  # Cuadrado SOLO alrededor de la C
-        ('TOPPADDING', (0, 0), (0, 0), 0),
-        ('BOTTOMPADDING', (0, 0), (0, 0), 0),
-        ('TOPPADDING', (0, 1), (0, 1), 1),
-    ]))
     
     # Columna 3: Datos de factura/NC con título dinámico
     titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
@@ -208,8 +185,9 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('ALIGN', (2, 0), (2, 0), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),  # Borde exterior
-        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # Línea después col 1
-        # NO ponemos LINEAFTER en col 2 porque la línea sale del cuadrado de la C
+        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # Línea después de col 1
+        ('BOX', (1, 0), (1, 0), 1.5, colors.black),  # CUADRADO solo alrededor de C+COD
+        # NO ponemos LINEAFTER en (1,0) porque el borde derecho del cuadrado ya es la línea
         ('TOPPADDING', (0, 0), (-1, -1), 5),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('LEFTPADDING', (0, 0), (-1, -1), 5),
