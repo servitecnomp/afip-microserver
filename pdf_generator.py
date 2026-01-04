@@ -198,15 +198,15 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         colWidths=[80*mm, 20*mm, 80*mm]
     )
 
-bloque_principal.setStyle(TableStyle([
-    ('BOX', (0, 0), (-1, -1), 1, colors.black),
-    ('LINEAFTER', (0, 0), (0, 0), 1.2, colors.black),
-    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-    ('LEFTPADDING', (0, 0), (-1, -1), 5),
-    ('RIGHTPADDING', (0, 0), (-1, -1), 5),
-    ('TOPPADDING', (0, 0), (-1, -1), 5),
-    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-]))
+    bloque_principal.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('LINEAFTER', (0, 0), (0, 0), 1.2, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
 
     story.append(bloque_principal)
     story.append(Spacer(1, 2*mm))
@@ -297,5 +297,4 @@ bloque_principal.setStyle(TableStyle([
 
     doc.build(story)
     print(f"PDF generado exitosamente: {output_path}")
-
 
