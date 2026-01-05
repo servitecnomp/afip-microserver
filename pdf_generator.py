@@ -139,7 +139,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     story.append(encabezado)
     story.append(Spacer(1, 2*mm))
     
-    # ===== ENCABEZADO AJUSTADO =====
+    # ===== ENCABEZADO PRINCIPAL =====
     try:
         logo = RLImage(logo_path, width=20*mm, height=20*mm)
     except:
@@ -148,7 +148,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     codigo_cbte = "013" if es_nota_credito else "011"
     titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
     
-    # Columna izquierda: EMISOR (mismo interlineado)
+    # Columna izquierda: EMISOR
     emisor_content = Paragraph(
         f"<b>{emisor['razon_social']}</b><br/><br/>"
         f"<b>Razón Social:</b> {emisor['razon_social']}<br/><br/>"
@@ -165,42 +165,38 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
     ]))
     
-    # Columna central: DRAWING (altura reducida 12mm: 60mm → 48mm)
+    # Columna central: DRAWING
     d = Drawing(8*mm, 48*mm)
     
-    # 1. Dibujar línea vertical completa
+    # Línea vertical
     d.add(Line(4*mm, 0, 4*mm, 48*mm, strokeColor=colors.black, strokeWidth=1.2))
     
-    # 2. Cuadrado C (18mm x 18mm) a 2mm del top
+    # Cuadrado C (18mm x 18mm) a 2mm del top
     cuadrado_size = 18*mm
-    # Con altura de 48mm: 48 - 2 - 18 = 28mm
-    cuadrado_y = 48*mm - 2*mm - cuadrado_size
     cuadrado_y = 28*mm
     
-    # Rectángulo con fondo blanco
     d.add(Rect(-5*mm, cuadrado_y, cuadrado_size, cuadrado_size, 
                fillColor=colors.white, strokeColor=colors.black, strokeWidth=2.5))
     
-    # 3. Letra C CENTRADA verticalmente en el cuadrado
-    # Centro del cuadrado: cuadrado_y + (cuadrado_size / 2) = 28 + 9 = 37mm
-    letra_y = cuadrado_y + 9*mm  # Centrada en el cuadrado de 18mm
+    # Letra C centrada
+    letra_y = cuadrado_y + 9*mm
     d.add(String(4*mm, letra_y, 'C', 
                 fontSize=26, fontName='Helvetica-Bold', textAnchor='middle', fillColor=colors.black))
     
-    # 4. COD. xxx en la parte inferior del cuadrado
+    # COD. xxx
     d.add(String(4*mm, cuadrado_y + 2*mm, f'COD. {codigo_cbte}', 
                 fontSize=7, fontName='Helvetica', textAnchor='middle', fillColor=colors.black))
     
-    # Columna derecha: FACTURA (con interlineado similar al emisor)
+    # Columna derecha: FACTURA (CON INTERLINEADO UNIFORME)
     factura_content = Paragraph(
-        f"<b><font size=18>{titulo_cbte}</font></b><br/><br/><br/>"  # Más grande + 2 espacios
+        f"<b><font size=18>{titulo_cbte}</font></b><br/><br/><br/>"
         f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)} "
         f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
-        f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
+        f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/>"
         f"<b>CUIT:</b> {cuit_emisor}<br/>"
         f"<b>Ingresos Brutos:</b> {emisor['ingresos_brutos']}<br/>"
         f"<b>Fecha de Inicio de Actividades:</b> {emisor['inicio_actividades']}",
-        style_small  # Mismo estilo que emisor
+        style_small
     )
     
     # TABLA SIMPLE: 3 columnas
