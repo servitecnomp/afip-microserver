@@ -149,7 +149,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     
     # === FILA 1 (SUPERIOR) ===
     emisor_top = Table([[logo], [Paragraph(f"<b>{emisor['razon_social']}</b><br/><br/><b>Razón Social:</b> {emisor['razon_social']}", style_small)]], 
-                       colWidths=[84*mm])
+                       colWidths=[82*mm])
     emisor_top.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -211,17 +211,18 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     )
     
     # === TABLA PRINCIPAL: 3 FILAS x 4 COLUMNAS ===
-    # Col 0: Emisor (84mm)
+    # Col 0: Emisor (82mm)
     # Col 1: Mitad izq cuadrado (12mm)
     # Col 2: Mitad der cuadrado (12mm)
-    # Col 3: Factura (72mm)
+    # Col 3: Factura (74mm)
     # Total: 180mm
     
+    # Ajustar alturas para centrar el cuadrado verticalmente
     bloque_principal = Table([
-        [emisor_top,    vacio_top_left,   vacio_top_right,   factura_top],     # Fila 1
-        [emisor_middle, col_letra,        '',                factura_middle],  # Fila 2 - cuadrado con SPAN
-        [emisor_bottom, vacio_bottom_left, vacio_bottom_right, factura_bottom] # Fila 3
-    ], colWidths=[84*mm, 12*mm, 12*mm, 72*mm])
+        [emisor_top,    vacio_top_left,   vacio_top_right,   factura_top],     # Fila 1: 28mm
+        [emisor_middle, col_letra,        '',                factura_middle],  # Fila 2: 24mm (cuadrado)
+        [emisor_bottom, vacio_bottom_left, vacio_bottom_right, factura_bottom] # Fila 3: 12mm
+    ], colWidths=[82*mm, 12*mm, 12*mm, 74*mm], rowHeights=[28*mm, 24*mm, 12*mm])
     
     bloque_principal.setStyle(TableStyle([
         # Borde exterior
@@ -250,7 +251,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('RIGHTPADDING', (0, 0), (0, -1), 3),
         ('LEFTPADDING', (1, 0), (2, -1), 0),   # Sin padding en columnas del cuadrado
         ('RIGHTPADDING', (1, 0), (2, -1), 0),
-        ('LEFTPADDING', (3, 0), (3, -1), 10),
+        ('LEFTPADDING', (3, 0), (3, -1), 8),
         ('RIGHTPADDING', (3, 0), (3, -1), 5),
         
         # Fila del cuadrado (fila 1) con menos padding vertical
