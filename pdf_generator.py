@@ -191,7 +191,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     
     # Columna derecha: FACTURA (con interlineado 1.5)
     factura_content = Paragraph(
-        f"<b><font size=18>{titulo_cbte}</font></b><br/><br/><br/>"
+        f"<b><font size=16>{titulo_cbte}</font></b><br/><br/><br/>"
         f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)} "
         f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
         f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/>"
