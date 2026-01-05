@@ -8,6 +8,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.graphics.shapes import Drawing, Rect, String, Line
 
 # Mapeo de compañías (fallback)
 COMPANIAS = {
@@ -88,7 +89,7 @@ def generar_qr_afip(datos_factura):
     return buffer
 
 def crear_pdf_factura(datos_factura, logo_path, output_path):
-    """Crea un PDF de factura o nota de crédito con formato AFIP mejorado"""
+    """Crea un PDF de factura o nota de crédito con formato AFIP - VERSIÓN SIMPLE"""
     
     cuit_emisor = str(datos_factura["cuit_emisor"]).replace("-", "").replace(" ", "")
     cuit_receptor = str(datos_factura["cuit_receptor"]).replace("-", "").replace(" ", "")
@@ -138,7 +139,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     story.append(encabezado)
     story.append(Spacer(1, 2*mm))
     
-    # ===== BLOQUE PRINCIPAL: 3 FILAS x 4 COLUMNAS =====
+    # ===== ENCABEZADO CON DRAWING (ENFOQUE SIMPLE) =====
     try:
         logo = RLImage(logo_path, width=20*mm, height=20*mm)
     except:
@@ -147,116 +148,75 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     codigo_cbte = "013" if es_nota_credito else "011"
     titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
     
-    # === FILA 1 (SUPERIOR) ===
-    emisor_top = Table([[logo], [Paragraph(f"<b>{emisor['razon_social']}</b><br/><br/><b>Razón Social:</b> {emisor['razon_social']}", style_small)]], 
-                       colWidths=[82*mm])
-    emisor_top.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-    ]))
-    
-    vacio_top_left = Paragraph("", style_small)   # Columna 2 (línea)
-    vacio_top_right = Paragraph("", style_small)  # Columna 3 (línea)
-    
-    factura_top = Paragraph(
-        f"<b><font size=14>{titulo_cbte}</font></b><br/><br/>"
-        f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)} "
-        f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}",
-        style_small
-    )
-    
-    # === FILA 2 (MEDIA - CON CUADRADO C que ocupa cols 2 y 3) ===
-    emisor_middle = Paragraph(
-        f"<b>Domicilio Comercial:</b> {emisor['domicilio']}",
-        style_small
-    )
-    
-    # Cuadrado C (24mm x 24mm) - ocupará columnas 2 y 3 juntas con SPAN
-    col_letra = Table([
-        [Paragraph("<para align=center><b><font size=36>C</font></b></para>", style_normal)],
-        [Paragraph(f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>", style_normal)]
-    ], colWidths=[24*mm], rowHeights=[16*mm, 8*mm])
-    
-    col_letra.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
-        ('VALIGN', (0, 1), (0, 1), 'MIDDLE'),
-        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
-        ('BOX', (0, 0), (-1, -1), 2.5, colors.black),
-        ('TOPPADDING', (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-    ]))
-    
-    factura_middle = Paragraph(
-        f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
-        f"<b>CUIT:</b> {cuit_emisor}",
-        style_small
-    )
-    
-    # === FILA 3 (INFERIOR) ===
-    emisor_bottom = Paragraph(
+    # Columna izquierda: EMISOR
+    emisor_content = Paragraph(
+        f"<b>{emisor['razon_social']}</b><br/><br/>"
+        f"<b>Razón Social:</b> {emisor['razon_social']}<br/><br/>"
+        f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/><br/>"
         f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}",
         style_small
     )
     
-    vacio_bottom_left = Paragraph("", style_small)   # Columna 2 (línea)
-    vacio_bottom_right = Paragraph("", style_small)  # Columna 3 (línea)
+    tabla_emisor = Table([[logo], [emisor_content]], colWidths=[86*mm])
+    tabla_emisor.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
     
-    factura_bottom = Paragraph(
+    # Columna central: DRAWING con línea + cuadrado
+    d = Drawing(8*mm, 60*mm)
+    
+    # 1. Dibujar línea vertical completa
+    d.add(Line(4*mm, 0, 4*mm, 60*mm, strokeColor=colors.black, strokeWidth=1.2))
+    
+    # 2. Dibujar cuadrado C (24mm x 24mm) centrado verticalmente
+    cuadrado_y = 18*mm  # Posición vertical (centrado en 60mm)
+    
+    # Rectángulo con fondo blanco (tapa la línea)
+    d.add(Rect(-8*mm, cuadrado_y, 24*mm, 24*mm, 
+               fillColor=colors.white, strokeColor=colors.black, strokeWidth=2.5))
+    
+    # 3. Letra C
+    d.add(String(4*mm, cuadrado_y + 16*mm, 'C', 
+                fontSize=36, fontName='Helvetica-Bold', textAnchor='middle', fillColor=colors.black))
+    
+    # 4. COD. xxx
+    d.add(String(4*mm, cuadrado_y + 4*mm, f'COD. {codigo_cbte}', 
+                fontSize=8, fontName='Helvetica', textAnchor='middle', fillColor=colors.black))
+    
+    # Columna derecha: FACTURA
+    factura_content = Paragraph(
+        f"<b><font size=14>{titulo_cbte}</font></b><br/><br/>"
+        f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)} "
+        f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/><br/>"
+        f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
+        f"<b>CUIT:</b> {cuit_emisor}<br/><br/>"
         f"<b>Ingresos Brutos:</b> {emisor['ingresos_brutos']}<br/>"
         f"<b>Fecha de Inicio de Actividades:</b> {emisor['inicio_actividades']}",
         style_small
     )
     
-    # === TABLA PRINCIPAL: 3 FILAS x 4 COLUMNAS ===
-    # Col 0: Emisor (82mm)
-    # Col 1: Mitad izq cuadrado (12mm)
-    # Col 2: Mitad der cuadrado (12mm)
-    # Col 3: Factura (74mm)
-    # Total: 180mm
-    
-    # Ajustar alturas para centrar el cuadrado verticalmente
+    # TABLA SIMPLE: 3 columnas (Emisor | Drawing | Factura)
     bloque_principal = Table([
-        [emisor_top,    vacio_top_left,   vacio_top_right,   factura_top],     # Fila 1: 28mm
-        [emisor_middle, col_letra,        '',                factura_middle],  # Fila 2: 24mm (cuadrado)
-        [emisor_bottom, vacio_bottom_left, vacio_bottom_right, factura_bottom] # Fila 3: 12mm
-    ], colWidths=[82*mm, 12*mm, 12*mm, 74*mm], rowHeights=[28*mm, 24*mm, 12*mm])
+        [tabla_emisor, d, factura_content]
+    ], colWidths=[86*mm, 8*mm, 86*mm])  # Total: 180mm
     
     bloque_principal.setStyle(TableStyle([
-        # Borde exterior
         ('BOX', (0, 0), (-1, -1), 1.5, colors.black),
-        
-        # SPAN del cuadrado: ocupa columnas 1 y 2 en fila 1 (índice de fila es 1)
-        ('SPAN', (1, 1), (2, 1)),
-        
-        # Líneas verticales en COLUMNAS 1 (después de emisor)
-        # Solo en FILAS 0 y 2 (arriba y abajo del cuadrado)
-        ('LINEAFTER', (0, 0), (0, 0), 1.2, colors.black),  # Fila 1 - línea visible
-        ('LINEAFTER', (0, 2), (0, 2), 1.2, colors.black),  # Fila 3 - línea visible
-        # En fila 1 (medio) NO hay línea porque el cuadrado la tapa
-        
-        # Alineaciones
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (2, -1), 'CENTER'),  # Columnas del cuadrado centradas
-        ('ALIGN', (3, 0), (3, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('VALIGN', (1, 1), (2, 1), 'MIDDLE'),  # Cuadrado centrado verticalmente
-        
-        # Paddings
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('LEFTPADDING', (0, 0), (0, -1), 5),
-        ('RIGHTPADDING', (0, 0), (0, -1), 3),
-        ('LEFTPADDING', (1, 0), (2, -1), 0),   # Sin padding en columnas del cuadrado
-        ('RIGHTPADDING', (1, 0), (2, -1), 0),
-        ('LEFTPADDING', (3, 0), (3, -1), 8),
-        ('RIGHTPADDING', (3, 0), (3, -1), 5),
-        
-        # Fila del cuadrado (fila 1) con menos padding vertical
-        ('TOPPADDING', (0, 1), (-1, 1), 0),
-        ('BOTTOMPADDING', (0, 1), (-1, 1), 0),
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('ALIGN', (2, 0), (2, 0), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (0, 0), 5),
+        ('RIGHTPADDING', (0, 0), (0, 0), 5),
+        ('LEFTPADDING', (1, 0), (1, 0), 0),
+        ('RIGHTPADDING', (1, 0), (1, 0), 0),
+        ('LEFTPADDING', (2, 0), (2, 0), 10),
+        ('RIGHTPADDING', (2, 0), (2, 0), 5),
     ]))
     
     story.append(bloque_principal)
