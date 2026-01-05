@@ -89,7 +89,7 @@ def generar_qr_afip(datos_factura):
     return buffer
 
 def crear_pdf_factura(datos_factura, logo_path, output_path):
-    """Crea un PDF de factura o nota de crédito con formato AFIP - VERSIÓN AJUSTADA"""
+    """Crea un PDF de factura o nota de crédito con formato AFIP - VERSIÓN FINAL"""
     
     cuit_emisor = str(datos_factura["cuit_emisor"]).replace("-", "").replace(" ", "")
     cuit_receptor = str(datos_factura["cuit_receptor"]).replace("-", "").replace(" ", "")
@@ -139,7 +139,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     story.append(encabezado)
     story.append(Spacer(1, 2*mm))
     
-    # ===== ENCABEZADO CON DRAWING (AJUSTADO) =====
+    # ===== ENCABEZADO CON DRAWING (VERSIÓN FINAL) =====
     try:
         logo = RLImage(logo_path, width=20*mm, height=20*mm)
     except:
@@ -165,38 +165,44 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
     ]))
     
-    # Columna central: DRAWING con línea + cuadrado (20% MÁS CHICO Y MÁS ARRIBA)
+    # Columna central: DRAWING con línea + cuadrado (18mm, pegado arriba)
     d = Drawing(8*mm, 60*mm)
     
     # 1. Dibujar línea vertical completa
     d.add(Line(4*mm, 0, 4*mm, 60*mm, strokeColor=colors.black, strokeWidth=1.2))
     
-    # 2. Cuadrado C (20mm x 20mm - 20% más chico) MÁS ARRIBA
-    cuadrado_size = 20*mm  # Reducido de 24mm a 20mm
-    cuadrado_y = 28*mm     # Subido de 18mm a 28mm (más arriba)
+    # 2. Cuadrado C (18mm x 18mm) a 2mm del borde superior
+    cuadrado_size = 18*mm  # 10% más chico (de 20mm a 18mm)
+    cuadrado_y = 60*mm - 2*mm - cuadrado_size  # 2mm del top
+    cuadrado_y = 40*mm  # = 60 - 2 - 18
     
     # Rectángulo con fondo blanco (tapa la línea)
-    d.add(Rect(-6*mm, cuadrado_y, cuadrado_size, cuadrado_size, 
+    d.add(Rect(-5*mm, cuadrado_y, cuadrado_size, cuadrado_size, 
                fillColor=colors.white, strokeColor=colors.black, strokeWidth=2.5))
     
-    # 3. Letra C (más chica)
-    d.add(String(4*mm, cuadrado_y + 13*mm, 'C', 
-                fontSize=30, fontName='Helvetica-Bold', textAnchor='middle', fillColor=colors.black))
+    # 3. Letra C centrada en el cuadrado
+    # Centro vertical del cuadrado: cuadrado_y + (cuadrado_size / 2)
+    letra_y = cuadrado_y + 11*mm  # Centrada visualmente
+    d.add(String(4*mm, letra_y, 'C', 
+                fontSize=28, fontName='Helvetica-Bold', textAnchor='middle', fillColor=colors.black))
     
-    # 4. COD. xxx
-    d.add(String(4*mm, cuadrado_y + 3*mm, f'COD. {codigo_cbte}', 
+    # 4. COD. xxx en la parte inferior del cuadrado
+    d.add(String(4*mm, cuadrado_y + 2*mm, f'COD. {codigo_cbte}', 
                 fontSize=7, fontName='Helvetica', textAnchor='middle', fillColor=colors.black))
     
-    # Columna derecha: FACTURA (MÁS PADDING IZQUIERDO para no quedar debajo del cuadrado)
+    # Columna derecha: FACTURA (con menos espacio arriba)
+    # Crear estilo especial con menos leading para que suba más
+    style_factura = ParagraphStyle('FacturaTop', fontSize=7, leading=8, spaceBefore=0, spaceAfter=0)
+    
     factura_content = Paragraph(
-        f"<b><font size=14>{titulo_cbte}</font></b><br/><br/>"
+        f"<b><font size=14>{titulo_cbte}</font></b><br/>"
         f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)} "
-        f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/><br/>"
+        f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
         f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
-        f"<b>CUIT:</b> {cuit_emisor}<br/><br/>"
+        f"<b>CUIT:</b> {cuit_emisor}<br/>"
         f"<b>Ingresos Brutos:</b> {emisor['ingresos_brutos']}<br/>"
         f"<b>Fecha de Inicio de Actividades:</b> {emisor['inicio_actividades']}",
-        style_small
+        style_factura
     )
     
     # TABLA SIMPLE: 3 columnas (Emisor | Drawing | Factura)
@@ -209,15 +215,18 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
         ('ALIGN', (1, 0), (1, 0), 'CENTER'),
         ('ALIGN', (2, 0), (2, 0), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('VALIGN', (0, 0), (0, -1), 'TOP'),
+        ('VALIGN', (1, 0), (1, 0), 'MIDDLE'),
+        ('VALIGN', (2, 0), (2, 0), 'TOP'),  # TOP para que el texto suba
         ('TOPPADDING', (0, 0), (-1, -1), 5),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('LEFTPADDING', (0, 0), (0, 0), 5),
         ('RIGHTPADDING', (0, 0), (0, 0), 5),
         ('LEFTPADDING', (1, 0), (1, 0), 0),
         ('RIGHTPADDING', (1, 0), (1, 0), 0),
-        ('LEFTPADDING', (2, 0), (2, 0), 18),  # Aumentado de 10 a 18mm
+        ('LEFTPADDING', (2, 0), (2, 0), 18),
         ('RIGHTPADDING', (2, 0), (2, 0), 5),
+        ('TOPPADDING', (2, 0), (2, 0), 2),  # Menos padding arriba para subir el texto
     ]))
     
     story.append(bloque_principal)
