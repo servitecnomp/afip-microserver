@@ -17,7 +17,7 @@ app = Flask(__name__)
 # CONFIGURACIÓN
 # ======================================================================
 
-MODO = os.environ.get("MODO", "PRODUCCION")
+MODO = "HOMOLOGACION"
 CUIT_1 = "27239676931"
 CUIT_2 = "27461124149"
 
