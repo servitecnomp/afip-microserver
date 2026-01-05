@@ -122,7 +122,9 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     
     styles = getSampleStyleSheet()
     style_normal = ParagraphStyle('Normal', fontSize=8, leading=10)
-    style_small = ParagraphStyle('Small', fontSize=7, leading=9)
+    
+    # NUEVO: Estilo con interlineado 1.5 (fontSize=7, leading=10.5)
+    style_small_15 = ParagraphStyle('Small15', fontSize=7, leading=10.5)
     
     story = []
     
@@ -148,13 +150,13 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     codigo_cbte = "013" if es_nota_credito else "011"
     titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
     
-    # Columna izquierda: EMISOR (interlineado simple como FACTURA)
+    # Columna izquierda: EMISOR (con interlineado 1.5)
     emisor_content = Paragraph(
         f"<b>{emisor['razon_social']}</b><br/><br/>"
         f"<b>Razón Social:</b> {emisor['razon_social']}<br/>"
         f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/>"
         f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}",
-        style_small
+        style_small_15  # Usando estilo con interlineado 1.5
     )
     
     tabla_emisor = Table([[logo], [emisor_content]], colWidths=[86*mm])
@@ -187,7 +189,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     d.add(String(4*mm, cuadrado_y + 2*mm, f'COD. {codigo_cbte}', 
                 fontSize=7, fontName='Helvetica', textAnchor='middle', fillColor=colors.black))
     
-    # Columna derecha: FACTURA (interlineado simple)
+    # Columna derecha: FACTURA (con interlineado 1.5)
     factura_content = Paragraph(
         f"<b><font size=18>{titulo_cbte}</font></b><br/><br/><br/>"
         f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)} "
@@ -196,7 +198,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         f"<b>CUIT:</b> {cuit_emisor}<br/>"
         f"<b>Ingresos Brutos:</b> {emisor['ingresos_brutos']}<br/>"
         f"<b>Fecha de Inicio de Actividades:</b> {emisor['inicio_actividades']}",
-        style_small
+        style_small_15  # Usando estilo con interlineado 1.5
     )
     
     # TABLA SIMPLE: 3 columnas
@@ -225,6 +227,8 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     story.append(Spacer(1, 2*mm))
     
     # ===== PERÍODO FACTURADO =====
+    style_small = ParagraphStyle('Small', fontSize=7, leading=9)
+    
     periodo_table = Table([[
         Paragraph(f"<b>Período Facturado Desde:</b> {fecha_emision.strftime('%d/%m/%Y')}  "
                  f"<b>Hasta:</b> {fecha_emision.strftime('%d/%m/%Y')}  "
