@@ -89,7 +89,7 @@ def generar_qr_afip(datos_factura):
     return buffer
 
 def crear_pdf_factura(datos_factura, logo_path, output_path):
-    """Crea un PDF de factura o nota de crédito con formato AFIP - VERSIÓN SIMPLE"""
+    """Crea un PDF de factura o nota de crédito con formato AFIP - VERSIÓN AJUSTADA"""
     
     cuit_emisor = str(datos_factura["cuit_emisor"]).replace("-", "").replace(" ", "")
     cuit_receptor = str(datos_factura["cuit_receptor"]).replace("-", "").replace(" ", "")
@@ -139,7 +139,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     story.append(encabezado)
     story.append(Spacer(1, 2*mm))
     
-    # ===== ENCABEZADO CON DRAWING (ENFOQUE SIMPLE) =====
+    # ===== ENCABEZADO CON DRAWING (AJUSTADO) =====
     try:
         logo = RLImage(logo_path, width=20*mm, height=20*mm)
     except:
@@ -165,28 +165,29 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
     ]))
     
-    # Columna central: DRAWING con línea + cuadrado
+    # Columna central: DRAWING con línea + cuadrado (20% MÁS CHICO Y MÁS ARRIBA)
     d = Drawing(8*mm, 60*mm)
     
     # 1. Dibujar línea vertical completa
     d.add(Line(4*mm, 0, 4*mm, 60*mm, strokeColor=colors.black, strokeWidth=1.2))
     
-    # 2. Dibujar cuadrado C (24mm x 24mm) centrado verticalmente
-    cuadrado_y = 18*mm  # Posición vertical (centrado en 60mm)
+    # 2. Cuadrado C (20mm x 20mm - 20% más chico) MÁS ARRIBA
+    cuadrado_size = 20*mm  # Reducido de 24mm a 20mm
+    cuadrado_y = 28*mm     # Subido de 18mm a 28mm (más arriba)
     
     # Rectángulo con fondo blanco (tapa la línea)
-    d.add(Rect(-8*mm, cuadrado_y, 24*mm, 24*mm, 
+    d.add(Rect(-6*mm, cuadrado_y, cuadrado_size, cuadrado_size, 
                fillColor=colors.white, strokeColor=colors.black, strokeWidth=2.5))
     
-    # 3. Letra C
-    d.add(String(4*mm, cuadrado_y + 16*mm, 'C', 
-                fontSize=36, fontName='Helvetica-Bold', textAnchor='middle', fillColor=colors.black))
+    # 3. Letra C (más chica)
+    d.add(String(4*mm, cuadrado_y + 13*mm, 'C', 
+                fontSize=30, fontName='Helvetica-Bold', textAnchor='middle', fillColor=colors.black))
     
     # 4. COD. xxx
-    d.add(String(4*mm, cuadrado_y + 4*mm, f'COD. {codigo_cbte}', 
-                fontSize=8, fontName='Helvetica', textAnchor='middle', fillColor=colors.black))
+    d.add(String(4*mm, cuadrado_y + 3*mm, f'COD. {codigo_cbte}', 
+                fontSize=7, fontName='Helvetica', textAnchor='middle', fillColor=colors.black))
     
-    # Columna derecha: FACTURA
+    # Columna derecha: FACTURA (MÁS PADDING IZQUIERDO para no quedar debajo del cuadrado)
     factura_content = Paragraph(
         f"<b><font size=14>{titulo_cbte}</font></b><br/><br/>"
         f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)} "
@@ -215,7 +216,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('RIGHTPADDING', (0, 0), (0, 0), 5),
         ('LEFTPADDING', (1, 0), (1, 0), 0),
         ('RIGHTPADDING', (1, 0), (1, 0), 0),
-        ('LEFTPADDING', (2, 0), (2, 0), 10),
+        ('LEFTPADDING', (2, 0), (2, 0), 18),  # Aumentado de 10 a 18mm
         ('RIGHTPADDING', (2, 0), (2, 0), 5),
     ]))
     
