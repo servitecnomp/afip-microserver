@@ -138,82 +138,113 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     story.append(encabezado)
     story.append(Spacer(1, 2*mm))
     
-    # ===== BLOQUE PRINCIPAL: 3 COLUMNAS =====
+    # ===== BLOQUE PRINCIPAL: 3 FILAS - CUADRADO C MONTADO SOBRE LÍNEA =====
     try:
         logo = RLImage(logo_path, width=20*mm, height=20*mm)
     except:
         logo = Paragraph("<b>LOGO</b>", style_normal)
     
-    # Columna 1: Emisor con logo (estructura simple anidada)
-    col_emisor = Paragraph(
+    codigo_cbte = "013" if es_nota_credito else "011"
+    titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
+    
+    # === FILA 1: PARTE SUPERIOR (con logo y título) ===
+    emisor_top = Paragraph(
         f"<b>{emisor['razon_social']}</b><br/><br/>"
-        f"<b>Razón Social:</b> {emisor['razon_social']}<br/>"
-        f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/>"
-        f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}",
+        f"<b>Razón Social:</b> {emisor['razon_social']}",
         style_small
     )
     
-    # Columna 2: Letra C con código dinámico (en CUADRADO 22mm x 22mm para tapar línea)
-    codigo_cbte = "013" if es_nota_credito else "011"
+    # Tabla para logo + texto emisor
+    tabla_emisor_top = Table([[logo], [emisor_top]], colWidths=[88*mm], rowHeights=[20*mm, None])
+    tabla_emisor_top.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
     
-    # Crear tabla cuadrada para C+COD (22mm x 22mm - más grande para tapar línea)
+    factura_top = Paragraph(
+        f"<b><font size=13>{titulo_cbte}</font></b><br/><br/>"
+        f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)}  "
+        f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}",
+        style_small
+    )
+    
+    # === FILA 2: PARTE MEDIA (con CUADRADO C que tapa la línea) ===
+    emisor_middle = Paragraph(
+        f"<b>Domicilio Comercial:</b> {emisor['domicilio']}",
+        style_small
+    )
+    
+    # Cuadrado C (22mm x 22mm)
     col_letra = Table([
-        [Paragraph("<para align=center><b><font size=28>C</font></b></para>", style_normal)],
-        [Paragraph(f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>", style_normal)]
-    ], colWidths=[22*mm], rowHeights=[15*mm, 7*mm])  # 15+7 = 22mm
+        [Paragraph("<para align=center><b><font size=30>C</font></b></para>", style_normal)],
+        [Paragraph(f"<para align=center><font size=7>COD. {codigo_cbte}</font></para>", style_normal)]
+    ], colWidths=[22*mm], rowHeights=[15*mm, 7*mm])
     
     col_letra.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
         ('VALIGN', (0, 1), (0, 1), 'TOP'),
-        ('BACKGROUND', (0, 0), (-1, -1), colors.white),  # FONDO BLANCO para tapar línea
-        ('BOX', (0, 0), (-1, -1), 2, colors.black),  # Borde negro más grueso
+        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+        ('BOX', (0, 0), (-1, -1), 2.5, colors.black),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
     ]))
     
-    # Columna 3: Datos de factura/NC con título dinámico
-    titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
-    col_factura = Paragraph(
-        f"<b><font size=11>{titulo_cbte}</font></b><br/><br/>"
-        f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)}  "
-        f"<b>Comp. Nro:</b> {str(datos_factura['cbte_nro']).zfill(8)}<br/>"
+    factura_middle = Paragraph(
         f"<b>Fecha de Emisión:</b> {fecha_emision.strftime('%d/%m/%Y')}<br/><br/>"
-        f"<b>CUIT:</b> {cuit_emisor}<br/>"
+        f"<b>CUIT:</b> {cuit_emisor}",
+        style_small
+    )
+    
+    # === FILA 3: PARTE INFERIOR ===
+    emisor_bottom = Paragraph(
+        f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}",
+        style_small
+    )
+    
+    factura_bottom = Paragraph(
         f"<b>Ingresos Brutos:</b> {emisor['ingresos_brutos']}<br/>"
         f"<b>Fecha de Inicio de Actividades:</b> {emisor['inicio_actividades']}",
         style_small
     )
     
-    # Tabla principal con logo en esquina superior izquierda
-    tabla_emisor = Table([[logo], [col_emisor]], colWidths=[75*mm], rowHeights=[20*mm, None])
-    tabla_emisor.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (0, 0), 'LEFT'),  # Logo a la IZQUIERDA (esquina)
-        ('ALIGN', (0, 1), (0, 1), 'LEFT'),    # Texto a la izquierda
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-    ]))
+    # === TABLA PRINCIPAL CON 3 FILAS ===
+    # Cada fila: [emisor (88mm) | línea/cuadrado (4mm) | factura (88mm)]
     
     bloque_principal = Table([
-        [tabla_emisor, col_letra, col_factura]
-    ], colWidths=[75*mm, 4*mm, 101*mm])  # Cuadrado en 75mm, texto con más espacio
+        [tabla_emisor_top, "", factura_top],      # Fila 1: línea visible
+        [emisor_middle, col_letra, factura_middle],  # Fila 2: CUADRADO tapa línea
+        [emisor_bottom, "", factura_bottom]       # Fila 3: línea visible
+    ], colWidths=[88*mm, 4*mm, 88*mm])  # Total: 180mm
     
     bloque_principal.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
-        ('ALIGN', (2, 0), (2, 0), 'LEFT'),
+        # Borde exterior
+        ('BOX', (0, 0), (-1, -1), 1.5, colors.black),
+        
+        # Línea vertical CENTRAL en columna del medio
+        # En filas 0 y 2 (arriba y abajo) se dibuja la línea
+        # En fila 1 (medio) el cuadrado la tapa con su fondo blanco
+        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # Fila 1
+        ('LINEAFTER', (0, 2), (0, 2), 1, colors.black),  # Fila 3
+        
+        # Alineaciones
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ('ALIGN', (2, 0), (2, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOX', (0, 0), (-1, -1), 1, colors.black),  # Borde exterior
-        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # Línea vertical en 75mm
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LEFTPADDING', (0, 0), (0, 0), 5),
-        ('LEFTPADDING', (1, 0), (1, 0), 0),  # Sin padding en cuadrado
-        ('RIGHTPADDING', (1, 0), (1, 0), 0),
-        ('LEFTPADDING', (2, 0), (2, 0), 24),  # 24mm padding left (5 base + 19mm extra)
-        ('RIGHTPADDING', (0, 0), (0, 0), 5),
-        ('RIGHTPADDING', (2, 0), (2, 0), 5),
+        
+        # Paddings
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (0, -1), 5),
+        ('RIGHTPADDING', (0, 0), (0, -1), 3),
+        ('LEFTPADDING', (1, 0), (1, -1), 0),   # Sin padding en cuadrado
+        ('RIGHTPADDING', (1, 0), (1, -1), 0),
+        ('LEFTPADDING', (2, 0), (2, -1), 8),
+        ('RIGHTPADDING', (2, 0), (2, -1), 5),
+        
+        # Fila del cuadrado: centrar verticalmente
+        ('VALIGN', (0, 1), (-1, 1), 'MIDDLE'),
     ]))
     
     story.append(bloque_principal)
@@ -236,7 +267,6 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     story.append(Spacer(1, 2*mm))
     
     # ===== DATOS DEL RECEPTOR =====
-    # Construir contenido dinámico
     receptor_content = (
         f"<b>CUIT:</b> {cuit_receptor}<br/>"
         f"<b>Apellido y Nombre / Razón Social:</b> {receptor['razon_social']}<br/>"
@@ -244,7 +274,6 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         f"<b>Domicilio:</b> {receptor['domicilio']}<br/>"
     )
     
-    # Si es NC, agregar referencia a factura anulada (formato AFIP)
     if es_nota_credito:
         cbte_asoc_nro = datos_factura.get("cbte_asoc_nro", "")
         cbte_asoc_pto_vta = datos_factura.get("cbte_asoc_pto_vta", datos_factura.get("punto_venta", 2))
@@ -270,7 +299,6 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     importe = float(datos_factura["importe"])
     descripcion = datos_factura.get("descripcion", "Servicio")
     
-    # Usar Paragraph para descripción con word wrap
     productos_data = [
         [Paragraph("<b>Código</b>", style_small),
          Paragraph("<b>Producto / Servicio</b>", style_small),
@@ -283,17 +311,16 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ["", Paragraph(descripcion, style_small), "1,00", "unidades", f"{importe:,.2f}", "0,00", "0,00", f"{importe:,.2f}"]
     ]
     
-    # Aumentar ancho de columna de descripción a 70mm
     productos_table = Table(productos_data, colWidths=[15*mm, 70*mm, 18*mm, 18*mm, 18*mm, 13*mm, 13*mm, 18*mm])
     
     productos_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-        ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # Código: centrado
-        ('ALIGN', (1, 0), (1, 0), 'CENTER'),   # Encabezado Producto: centrado
-        ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Descripción: izquierda
-        ('ALIGN', (2, 0), (-1, -1), 'CENTER'), # Resto: centrado
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), # Alineación vertical
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+        ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
