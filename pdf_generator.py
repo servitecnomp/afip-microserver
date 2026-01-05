@@ -57,6 +57,7 @@ def generar_qr_afip(datos_factura):
     return buffer
 
 def crear_pdf_factura(datos_factura, logo_path, output_path):
+    # ... (Configuración inicial de datos permanece igual) ...
     cuit_emisor = str(datos_factura["cuit_emisor"]).replace("-", "").replace(" ", "")
     fecha_emision = datos_factura["fecha_emision"]
     vencimiento_cae = formatear_vencimiento_cae(str(datos_factura["vencimiento_cae"]))
@@ -67,18 +68,16 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
 
     doc = SimpleDocTemplate(output_path, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=10*mm, bottomMargin=10*mm)
     styles = getSampleStyleSheet()
-    
-    # Estilos de texto
     style_small = ParagraphStyle('Small', fontSize=8, leading=10)
     style_letra = ParagraphStyle('LetraC', fontSize=28, alignment=TA_CENTER, leading=26)
 
     story = []
 
-    # 1. Franja ORIGINAL / DUPLICADO
+    # 1. ORIGINAL / DUPLICADO
     tipo_copia = "ORIGINAL" if "duplicado" not in output_path.lower() else "DUPLICADO"
     story.append(Table([[tipo_copia]], colWidths=[180*mm], style=[('BOX',(0,0),(-1,-1),1,colors.black),('ALIGN',(0,0),(-1,-1),'CENTER')]))
 
-    # 2. Preparar columnas laterales
+    # 2. Columnas del Encabezado
     try:
         logo = RLImage(logo_path, width=25*mm, height=25*mm)
     except:
@@ -104,51 +103,60 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         Paragraph(f"<b>Inicio de Actividades:</b> {emisor['inicio_actividades']}", style_small),
     ]
 
-    # 3. BLOQUE DE 4 COLUMNAS (Línea central exacta)
-    # 82mm + 8mm + 8mm + 82mm = 180mm total
+    # 3. BLOQUE DE ENCABEZADO (Una sola línea central)
     bloque_afip = Table([
         [col_izq, Paragraph(f"<b>{letra_cbte}</b><br/><font size=7>COD. {codigo_cbte}</font>", style_letra), "", col_der]
     ], colWidths=[82*mm, 8*mm, 8*mm, 82*mm])
 
     bloque_afip.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('SPAN', (1, 0), (2, 0)),                      # Une las celdas de 8mm para la C
-        ('BOX', (1, 0), (2, 0), 1, colors.black),      # Cuadrado de la C
-        ('BACKGROUND', (1, 0), (2, 0), colors.white),  # Tapa la línea central
-        ('LINEBEFORE', (2, 0), (2, 0), 1, colors.black), # LA LÍNEA DEL MEDIO
+        ('SPAN', (1, 0), (2, 0)),                      # Une las celdas para el cuadrado
+        ('BOX', (1, 0), (2, 0), 1, colors.black),      # Borde del cuadrado de la C
+        ('BACKGROUND', (1, 0), (2, 0), colors.white),  # EL TRUCO: Tapa la línea que pasa por el medio
+        ('LINEBEFORE', (2, 0), (2, 0), 1, colors.black), # ESTA ES LA ÚNICA LÍNEA CENTRAL
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('ALIGN', (1, 0), (2, 0), 'CENTER'),
-        ('TOPPADDING', (1, 0), (2, 0), 1),
     ]))
     story.append(bloque_afip)
     story.append(Spacer(1, 2*mm))
 
-    # 4. Período y Receptor
-    story.append(Table([[Paragraph(f"<b>Período Facturado Desde:</b> {fecha_emision.strftime('%d/%m/%Y')} &nbsp; <b>Hasta:</b> {fecha_emision.strftime('%d/%m/%Y')}", style_small)]], colWidths=[180*mm], style=[('BOX',(0,0),(-1,-1),1,colors.black)]))
-    story.append(Spacer(1, 1*mm))
-    
-    rec_info = f"<b>CUIT:</b> {datos_factura['cuit_receptor']} &nbsp; <b>Razón Social:</b> {datos_factura.get('compania', 'Consumidor Final')}<br/>" \
-               f"<b>Condición frente al IVA:</b> {datos_factura.get('condicion_iva', 'IVA Responsable Inscripto')}<br/>" \
-               f"<b>Domicilio:</b> {datos_factura.get('domicilio', '')}"
-    story.append(Table([[Paragraph(rec_info, style_small)]], colWidths=[180*mm], style=[('BOX',(0,0),(-1,-1),1,colors.black), ('LEFTPADDING',(0,0),(-1,-1),5)]))
+    # 4. Receptor (Simplificado para el ejemplo)
+    rec_info = f"<b>CUIT:</b> {datos_factura['cuit_receptor']} &nbsp; <b>Cliente:</b> {datos_factura.get('compania', 'Consumidor Final')}"
+    story.append(Table([[Paragraph(rec_info, style_small)]], colWidths=[180*mm], style=[('BOX',(0,0),(-1,-1),1,colors.black)]))
     story.append(Spacer(1, 4*mm))
 
-    # 5. Tabla de Productos
+    # 5. TABLA DE PRODUCTOS CON TODAS LAS COLUMNAS AFIP
+    prod_header = ["Código", "Producto / Servicio", "Cantidad", "U. Medida", "Precio Unit.", "% Bonif", "Imp. Bonif.", "Subtotal"]
     importe = float(datos_factura["importe"])
-    prod_table = Table([
-        ["Producto / Servicio", "Cantidad", "Precio Unit.", "Subtotal"],
-        [Paragraph(datos_factura.get("descripcion", "Servicio"), style_small), "1.00", f"{importe:,.2f}", f"{importe:,.2f}"]
-    ], colWidths=[100*mm, 20*mm, 30*mm, 30*mm])
-    prod_table.setStyle(TableStyle([('GRID',(0,0),(-1,-1),0.5,colors.black), ('BACKGROUND',(0,0),(-1,0),colors.lightgrey), ('ALIGN',(1,0),(-1,-1),'CENTER')]))
-    story.append(prod_table)
+    prod_row = [
+        "", 
+        Paragraph(datos_factura.get("descripcion", "Servicio"), style_small),
+        "1,00",
+        "unidades",
+        f"{importe:,.2f}",
+        "0,00",
+        "0,00",
+        f"{importe:,.2f}"
+    ]
+    
+    # Ancho de columnas ajustado para sumar 180mm
+    t_prod = Table([prod_header, prod_row], colWidths=[15*mm, 65*mm, 18*mm, 18*mm, 22*mm, 14*mm, 14*mm, 14*mm])
+    t_prod.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+        ('ALIGN', (2,0), (-1,-1), 'CENTER'),
+        ('FONTSIZE', (0,0), (-1,-1), 7),
+    ]))
+    story.append(t_prod)
 
-    # 6. Totales y Pie (QR + CAE)
+    # 6. Totales y Pie
     story.append(Spacer(1, 5*mm))
     story.append(Paragraph(f"<para align=right><b>Importe Total: $ {importe:,.2f}</b></para>", styles['Normal']))
     
-    qr_img = RLImage(generar_qr_afip(datos_factura), 35*mm, 35*mm)
-    cae_info = f"<para align=right><b>CAE N°:</b> {datos_factura['cae']}<br/><b>Vto. CAE:</b> {vencimiento_cae}</para>"
+    footer = Table([[RLImage(generar_qr_afip(datos_factura), 35*mm, 35*mm), 
+                     Paragraph(f"<para align=right><b>CAE:</b> {datos_factura['cae']}<br/><b>Vto:</b> {vencimiento_cae}</para>", style_small)]], 
+                   colWidths=[50*mm, 130*mm])
     story.append(Spacer(1, 10*mm))
-    story.append(Table([[qr_img, Paragraph(cae_info, style_small)]], colWidths=[50*mm, 130*mm], style=[('VALIGN',(0,0),(-1,-1),'BOTTOM')]))
+    story.append(footer)
 
     doc.build(story)
