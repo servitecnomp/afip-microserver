@@ -188,7 +188,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     )
     
     # Tabla principal con logo en esquina superior izquierda
-    tabla_emisor = Table([[logo], [col_emisor]], colWidths=[88*mm], rowHeights=[20*mm, None])
+    tabla_emisor = Table([[logo], [col_emisor]], colWidths=[80*mm], rowHeights=[20*mm, None])
     tabla_emisor.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),  # Logo a la IZQUIERDA (esquina)
         ('ALIGN', (0, 1), (0, 1), 'LEFT'),    # Texto a la izquierda
@@ -197,7 +197,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     
     bloque_principal = Table([
         [tabla_emisor, col_letra, col_factura]
-    ], colWidths=[88*mm, 4*mm, 88*mm])  # Cuadrado mejor centrado (centro en 90mm)
+    ], colWidths=[80*mm, 4*mm, 96*mm])  # Cuadrado 4mm más a izquierda (línea en 80mm)
     
     bloque_principal.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
@@ -212,7 +212,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('LEFTPADDING', (0, 0), (0, 0), 5),
         ('LEFTPADDING', (1, 0), (1, 0), 0),  # Sin padding para que cuadrado esté centrado
         ('RIGHTPADDING', (1, 0), (1, 0), 0),
-        ('LEFTPADDING', (2, 0), (2, 0), 5),
+        ('LEFTPADDING', (2, 0), (2, 0), 15),  # 15mm padding left (5 base + 10mm extra)
         ('RIGHTPADDING', (0, 0), (0, 0), 5),
         ('RIGHTPADDING', (2, 0), (2, 0), 5),
     ]))
