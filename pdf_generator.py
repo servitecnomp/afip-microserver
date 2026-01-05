@@ -148,11 +148,11 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     codigo_cbte = "013" if es_nota_credito else "011"
     titulo_cbte = "NOTA DE CRÉDITO" if es_nota_credito else "FACTURA"
     
-    # Columna izquierda: EMISOR (con espaciado entre líneas)
+    # Columna izquierda: EMISOR (interlineado simple como FACTURA)
     emisor_content = Paragraph(
         f"<b>{emisor['razon_social']}</b><br/><br/>"
-        f"<b>Razón Social:</b> {emisor['razon_social']}<br/><br/>"
-        f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/><br/>"
+        f"<b>Razón Social:</b> {emisor['razon_social']}<br/>"
+        f"<b>Domicilio Comercial:</b> {emisor['domicilio']}<br/>"
         f"<b>Condición frente al IVA:</b> {emisor['condicion_iva']}",
         style_small
     )
@@ -187,7 +187,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     d.add(String(4*mm, cuadrado_y + 2*mm, f'COD. {codigo_cbte}', 
                 fontSize=7, fontName='Helvetica', textAnchor='middle', fillColor=colors.black))
     
-    # Columna derecha: FACTURA (con espaciado UNIFORME entre líneas)
+    # Columna derecha: FACTURA (interlineado simple)
     factura_content = Paragraph(
         f"<b><font size=18>{titulo_cbte}</font></b><br/><br/><br/>"
         f"<b>Punto de Venta:</b> {str(datos_factura['punto_venta']).zfill(5)} "
