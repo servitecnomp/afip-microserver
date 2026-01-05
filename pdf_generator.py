@@ -153,21 +153,21 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         style_small
     )
     
-    # Columna 2: Letra C con código dinámico (en CUADRADO 20mm x 20mm)
+    # Columna 2: Letra C con código dinámico (en CUADRADO 22mm x 22mm para tapar línea)
     codigo_cbte = "013" if es_nota_credito else "011"
     
-    # Crear tabla cuadrada para C+COD (20mm x 20mm)
+    # Crear tabla cuadrada para C+COD (22mm x 22mm - más grande para tapar línea)
     col_letra = Table([
         [Paragraph("<para align=center><b><font size=28>C</font></b></para>", style_normal)],
         [Paragraph(f"<para align=center><font size=8>COD. {codigo_cbte}</font></para>", style_normal)]
-    ], colWidths=[20*mm], rowHeights=[14*mm, 6*mm])  # 14+6 = 20mm
+    ], colWidths=[22*mm], rowHeights=[15*mm, 7*mm])  # 15+7 = 22mm
     
     col_letra.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
         ('VALIGN', (0, 1), (0, 1), 'TOP'),
-        ('BOX', (0, 0), (-1, -1), 1.5, colors.black),  # CUADRADO alrededor
         ('BACKGROUND', (0, 0), (-1, -1), colors.white),  # FONDO BLANCO para tapar línea
+        ('BOX', (0, 0), (-1, -1), 2, colors.black),  # Borde negro más grueso
         ('TOPPADDING', (0, 0), (-1, -1), 0),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
@@ -188,7 +188,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     )
     
     # Tabla principal con logo en esquina superior izquierda
-    tabla_emisor = Table([[logo], [col_emisor]], colWidths=[80*mm], rowHeights=[20*mm, None])
+    tabla_emisor = Table([[logo], [col_emisor]], colWidths=[75*mm], rowHeights=[20*mm, None])
     tabla_emisor.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),  # Logo a la IZQUIERDA (esquina)
         ('ALIGN', (0, 1), (0, 1), 'LEFT'),    # Texto a la izquierda
@@ -197,7 +197,7 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     
     bloque_principal = Table([
         [tabla_emisor, col_letra, col_factura]
-    ], colWidths=[80*mm, 4*mm, 96*mm])  # Cuadrado 4mm más a izquierda (línea en 80mm)
+    ], colWidths=[75*mm, 4*mm, 101*mm])  # Cuadrado en 75mm, texto con más espacio
     
     bloque_principal.setStyle(TableStyle([
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
@@ -205,14 +205,13 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         ('ALIGN', (2, 0), (2, 0), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),  # Borde exterior
-        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # UNA línea vertical (tapada por cuadrado)
-        # Solo UNA línea después de col 0, no después de col 1
+        ('LINEAFTER', (0, 0), (0, 0), 1, colors.black),  # Línea vertical en 75mm
         ('TOPPADDING', (0, 0), (-1, -1), 5),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('LEFTPADDING', (0, 0), (0, 0), 5),
-        ('LEFTPADDING', (1, 0), (1, 0), 0),  # Sin padding para que cuadrado esté centrado
+        ('LEFTPADDING', (1, 0), (1, 0), 0),  # Sin padding en cuadrado
         ('RIGHTPADDING', (1, 0), (1, 0), 0),
-        ('LEFTPADDING', (2, 0), (2, 0), 15),  # 15mm padding left (5 base + 10mm extra)
+        ('LEFTPADDING', (2, 0), (2, 0), 24),  # 24mm padding left (5 base + 19mm extra)
         ('RIGHTPADDING', (0, 0), (0, 0), 5),
         ('RIGHTPADDING', (2, 0), (2, 0), 5),
     ]))
