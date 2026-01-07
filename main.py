@@ -32,8 +32,8 @@ if MODO == "PRODUCCION":
 else:
     CERT_1 = "homologacion_27239676931.crt"
     KEY_1 = "homologacion_27239676931.key"
-    CERT_2 = "certificado_meme_homo.crt"
-    KEY_2 = "clave_privada_meme_homo.key"
+    CERT_2 = "homologacion_Meme.crt"
+    KEY_2 = "homologacion_Meme.key"
     WSAA = "https://wsaahomo.afip.gov.ar/ws/services/LoginCms?wsdl"
     WSFE = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
 
