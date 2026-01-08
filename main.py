@@ -17,7 +17,10 @@ app = Flask(__name__)
 # CONFIGURACIÓN
 # ======================================================================
 
-MODO = "HOMOLOGACION"
+# MODO = "HOMOLOGACION"  
+# MODO = "HOMOLOGACION"  # Usar solo para pruebas
+MODO = "PRODUCCION"      # ← Facturas reales con CAE válido ( SEGUN LO QUE PONGA ACA, EL PROGRRAMA HACE PRUEBAS SIN FACTURAR: HOMOLOGACION Y PRODUCCIO PARA FACTURAR
+
 CUIT_1 = "27239676931"
 CUIT_2 = "27461124149"
 
