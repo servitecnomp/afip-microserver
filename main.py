@@ -399,14 +399,10 @@ def facturar():
             print(f"  pdf_path: {pdf_path} (tipo: {type(pdf_path)})")
             print(f"  logo: {logo_a_usar} (tipo: {type(logo_a_usar)})")
             
-            crear_pdf_factura(datos_pdf, logo_a_usar, pdf_path)
-            
-            if os.path.exists(pdf_path):
-                pdf_url = f"https://afip-microserver-1.onrender.com/descargar_pdf/{pdf_filename}"
-                factura["pdf_url"] = pdf_url
-                print(f"✓ PDF generado: {pdf_filename}")
-            else:
-                print(f"✗ PDF no se creó")
+           pdf_base64 = crear_pdf_factura(datos_pdf, logo_a_usar, None)
+                factura["pdf_base64"] = pdf_base64
+                factura["pdf_filename"] = pdf_filename
+                print(f"✓ PDF generado en memoria: {pdf_filename}")
         except Exception as e:
             print(f"⚠ Error generando PDF (factura OK): {str(e)}")
             import traceback
