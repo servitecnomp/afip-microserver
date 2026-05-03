@@ -435,5 +435,17 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
         if i < 2:
             full_story.append(PageBreak())
 
+        buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=15*mm,
+        leftMargin=15*mm,
+        topMargin=10*mm,
+        bottomMargin=10*mm
+    )
     doc.build(full_story)
-    print(f"PDF generado exitosamente (3 copias): {output_path}")
+    buffer.seek(0)
+    pdf_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+    print(f"PDF generado exitosamente (3 copias) en memoria")
+    return pdf_base64
