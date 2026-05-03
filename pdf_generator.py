@@ -416,8 +416,6 @@ def crear_pdf_factura(datos_factura, logo_path, output_path):
     """
     from reportlab.platypus import PageBreak
 
-    output_path = str(output_path)
-
     doc = SimpleDocTemplate(
         output_path,
         pagesize=A4,
